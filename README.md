@@ -1,6 +1,6 @@
 Mustatil is an integrated GIS-level AI vision workspace for annotation, YOLO training, large-scale detection, satellite-map analysis, and visual pipeline building. It combines dataset creation, model training, geospatial inference, map-based review, and graphical AI pipelines in one desktop application — designed for images and map areas too large for conventional computer-vision tools.
 
-<a href="[https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-3.4/Mustatil_3.4_Setup.exe]">https://doi.org/10.5281/zenodo.20481111</a>
+<a href="[https://doi.org/10.5281/zenodo.20481111]">https://doi.org/10.5281/zenodo.20481111</a>
 
 The installer .exe does download Python and all dependencys then it starts the GUI. Don't worry, it takes some time and should be an option for non Python natives. Download from Github releases or on itch.
 

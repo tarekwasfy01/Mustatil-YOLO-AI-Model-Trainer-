@@ -46,4 +46,5 @@ Download Zip and click on the dependencies .bat. Use Python 3.11.
 
 
 Aditionally there is a GeoPackage converter for QGis if there is a Problem with the files. Normally you can change the EPGS for a layer in QGis.
+Mustatil means rectangle — a reference to both archaeological mustatils and the rectangular detection boxes used in AI object detection.
 The Program was written using AI.

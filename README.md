@@ -28,8 +28,15 @@ Download Zip and click on the dependencies .bat. Use Python 3.11.
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4_Setup.exe</a>
 
+# Apple Mac OS Installer:
 
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4.0.0_macOS.pkg">Mac Installer
+</a>
 
+# Linux Installer:
+
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil-Linux-Installer.run">Linux Installer
+</a>
 
 
 

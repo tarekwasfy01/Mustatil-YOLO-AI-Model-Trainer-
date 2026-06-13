@@ -4,7 +4,7 @@ Mustatil is an integrated GIS-level AI vision workspace for annotation, YOLO tra
 
 The installer .exe does download Python and all dependencys then it starts the GUI. Don't worry, it takes some time and should be an option for non Python natives. Download from Github releases or on itch.
 
-# Downloads:
+# Download Windows Installer:
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4_Setup.exe">GitHub</a>
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4_Setup.exe">GitHub</a>

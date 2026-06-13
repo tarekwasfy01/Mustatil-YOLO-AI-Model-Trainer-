@@ -15,19 +15,6 @@ The installer .exe does download Python and all dependencys then it starts the G
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4_Setup.exe">GitHub</a>
 
 
-## For Python natives:
-
-Download Zip and click on the dependencies .bat. Use Python 3.11.
-
-# Download the Zip Python archive here:
-
-[https://github.com/tarekwasfy01/Mustatil---YOLO-AI-Model-Trainer-/blob/Mustatil-Pro-Yolo-AI---Main-Branch/Mustatil3.2.zip](https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/blob/Mustatil-Pro-Yolo-AI---Main-Branch/Mustatil3.2.zip)
-
-
-# Download the .exe installer release from github: 
-
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4_Setup.exe</a>
-
 # Apple Mac OS Installer:
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4.0.0_macOS.pkg">Mac Installer

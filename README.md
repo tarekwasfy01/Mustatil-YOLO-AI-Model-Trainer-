@@ -1,4 +1,5 @@
 Mustatil is an integrated GIS-level AI vision workspace for annotation, YOLO training, large-scale detection, satellite-map analysis, and visual pipeline building. It combines dataset creation, model training, geospatial inference, map-based review, and graphical AI pipelines in one desktop application — designed for images and map areas too large for conventional computer-vision tools.
+Mustatil also includes experimental support for additional AI vision models beyond standard YOLO. The Google OWL-ViT / OWLv2 model enables open-vocabulary object detection from text prompts. Grounding DINO adds powerful text-guided detection for flexible object search, while LAE-DINO provides an advanced DINO-based workflow with project-based dataset creation and training support. These models extend Mustatil from a YOLO GIS workspace into a broader AI detection and training environment.
 
 <a href="https://doi.org/10.5281/zenodo.20481110">https://doi.org/10.5281/zenodo.20481110</a>
 

@@ -5,7 +5,7 @@ Mustatil also includes experimental support for additional AI vision models beyo
 
 The installer .exe does download Python and all dependencys then it starts the GUI. Don't worry, it takes some time and should be an option for non Python natives. Download from Github releases or on itch.
 
-# Download Windows Installer:
+# Download the latest Windows Installer:
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.1/Mustatil_5.1_Setup.exe">GitHub</a>
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.1/Mustatil_5.1_Setup.exe">GitHub</a>
@@ -21,14 +21,14 @@ py -m pip install mustatil
 
 mustatil
 
-# Apple Mac OS Installer:
+# Mustatil 4 Apple Mac OS Installer:
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4.0.0_macOS.pkg">Mac Installer
 </a>
 
-# Linux Installer:
+# Mustatil 5.1 Linux Installer:
 
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil-Linux-Installer.run">Linux Installer
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.1/Mustatil5.1_Linux_Installer.deb">Linux Installer
 </a>
 
 

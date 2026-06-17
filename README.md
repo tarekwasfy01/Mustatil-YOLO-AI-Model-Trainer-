@@ -15,6 +15,10 @@ The installer .exe does download Python and all dependencys then it starts the G
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5/Mustatil_5_Setup.exe">GitHub</a>
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5/Mustatil_5_Setup.exe">GitHub</a>
 
+# Or Use Python Package for every OS:
+
+py -m pip install mustatil
+mustatil
 
 # Apple Mac OS Installer:
 

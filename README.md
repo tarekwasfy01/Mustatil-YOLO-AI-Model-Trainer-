@@ -18,6 +18,7 @@ The installer .exe does download Python and all dependencys then it starts the G
 # Or Use Python Package for every OS:
 
 py -m pip install mustatil
+
 mustatil
 
 # Apple Mac OS Installer:

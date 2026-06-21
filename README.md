@@ -19,10 +19,6 @@ The installer .exe does download Python and all dependencys then it starts the G
 
 py -m pip install mustatil
 
-or
-
-python -m pip install "mustatil[yolo,gis,onnx,vision,science,webui]"
-
 mustatil
 
 # Mustatil 4 Apple Mac OS Installer:

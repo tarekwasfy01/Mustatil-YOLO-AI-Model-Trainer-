@@ -14,7 +14,7 @@
   </a>
 
 <a href="https://doi.org/10.5281/zenodo.20481110">
-  <img src="https://img.shields.io/badge/Zenodo-DOI%2010.5281%2Fzenodo.20481111-blue?style=flat&logo=zenodo" alt="Zenodo DOI">
+  <img src="https://img.shields.io/badge/Zenodo-DOI%2010.5281%2Fzenodo.20481110-blue?style=flat&logo=zenodo" alt="Zenodo DOI">
 </a>
 
   <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/blob/main/LICENSE">

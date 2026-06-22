@@ -13,9 +13,9 @@
     <img src="https://img.shields.io/badge/Download-itch.io-red" alt="Download on itch.io">
   </a>
 
-  <a href="https://doi.org/10.5281/zenodo.20481111">
-    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.20481111.svg" alt="Zenodo DOI">
-  </a>
+<a href="https://doi.org/10.5281/zenodo.20481111">
+  <img src="https://img.shields.io/badge/Zenodo-DOI%2010.5281%2Fzenodo.20481111-blue?style=flat&logo=zenodo" alt="Zenodo DOI">
+</a>
 
   <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-LGPL%20v3-blue" alt="License LGPL v3">
@@ -58,7 +58,7 @@ mustatil
 
 # Conda
 
-$conda install mustatil::mustatil
+$ conda install mustatil::mustatil
 
 # Mustatil 4 Apple Mac OS Installer:
 

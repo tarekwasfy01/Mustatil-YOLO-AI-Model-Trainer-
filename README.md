@@ -1,25 +1,38 @@
-
 # Mustatil
 
-<p align="center">
-  <img src="https://img.shields.io/badge/license-LGPL%20v3-blue" alt="License LGPL v3">
-  <a href="https://pypi.org/project/mustatil/">
-    <img src="https://img.shields.io/pypi/v/mustatil?label=pypi" alt="PyPI version">
+<p align="left">
+  <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-">
+    <img src="https://img.shields.io/badge/GitHub-Repository-black" alt="GitHub Repository">
   </a>
-  <img src="https://img.shields.io/badge/python-3.11%2B-brightgreen" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/os-Windows%20%7C%20Linux%20%7C%20macOS-pink" alt="Operating systems">
-  <img src="https://img.shields.io/badge/YOLO-Training%20%26%20Detection-orange" alt="YOLO Training and Detection">
-  <img src="https://img.shields.io/badge/GIS-GeoTIFF%20%7C%20GPKG-green" alt="GIS">
-  <img src="https://img.shields.io/badge/Desktop-AI%20Vision%20Workspace-purple" alt="Desktop AI Vision Workspace">
-</p>
 
-<p align="center">
-  <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-">GitHub</a> |
-  <a href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">Download</a> |
-  <a href="https://doi.org/10.5281/zenodo.20481111">Zenodo DOI</a> |
-  <a href="http://mustatil.de/">Website</a>
-</p>
+  <a href="https://pypi.org/project/mustatil/">
+    <img src="https://img.shields.io/pypi/v/mustatil?label=PyPI" alt="PyPI version">
+  </a>
 
+  <a href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">
+    <img src="https://img.shields.io/badge/Download-itch.io-red" alt="Download on itch.io">
+  </a>
+
+  <a href="https://doi.org/10.5281/zenodo.20481111">
+    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.20481111.svg" alt="Zenodo DOI">
+  </a>
+
+  <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-LGPL%20v3-blue" alt="License LGPL v3">
+  </a>
+
+  <a href="https://www.python.org/downloads/">
+    <img src="https://img.shields.io/badge/Python-3.11%2B-brightgreen" alt="Python 3.11+">
+  </a>
+
+  <a href="http://mustatil.de/">
+    <img src="https://img.shields.io/badge/Website-mustatil.de-orange" alt="Mustatil Website">
+  </a>
+
+  <a href="#features">
+    <img src="https://img.shields.io/badge/Features-YOLO%20Training%20%7C%20GIS%20Detection%20%7C%20AI%20Pipeline-purple" alt="Features">
+  </a>
+</p>
 Mustatil is an integrated GIS-level AI vision workspace for annotation, YOLO training, large-scale detection, satellite-map analysis, and visual pipeline building. It combines dataset creation, model training, geospatial inference, map-based review, and graphical AI pipelines in one desktop application — designed for images and map areas too large for conventional computer-vision tools.
 Mustatil also includes experimental support for additional AI vision models beyond standard YOLO. The Google OWL-ViT / OWLv2 model enables open-vocabulary object detection from text prompts. Grounding DINO adds powerful text-guided detection for flexible object search, while LAE-DINO provides an advanced DINO-based workflow with project-based dataset creation and training support. These models extend Mustatil from a YOLO GIS workspace into a broader AI detection and training environment.
 

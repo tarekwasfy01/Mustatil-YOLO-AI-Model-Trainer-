@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/badge/Download-itch.io-red" alt="Download on itch.io">
   </a>
 
-<a href="https://doi.org/10.5281/zenodo.20481111">
+<a href="https://doi.org/10.5281/zenodo.20481110">
   <img src="https://img.shields.io/badge/Zenodo-DOI%2010.5281%2Fzenodo.20481111-blue?style=flat&logo=zenodo" alt="Zenodo DOI">
 </a>
 
@@ -42,13 +42,13 @@ The installer .exe does download Python and all dependencys then it starts the G
 
 # Download the latest Windows Installer:
 
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe">GitHub</a>
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe">GitHub</a>
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">GitHub</a>
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">GitHub</a>
 
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe</a>
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe</a>
 
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe">GitHub</a>
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe">GitHub</a>
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">GitHub</a>
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">GitHub</a>
 
 # Or Use Python Package for every OS:
 
@@ -80,11 +80,13 @@ $ conda install mustatil::mustatil
 # Downloads:
 
 
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe</a>
+
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe</a>
 # Downloads:
 
 
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.5/Mustatil_5.5_Setup.exe</a>
+
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe</a>
 
 
 Aditionally there is a GeoPackage converter for QGis if there is a Problem with the files. Normally you can change the EPGS for a layer in QGis.

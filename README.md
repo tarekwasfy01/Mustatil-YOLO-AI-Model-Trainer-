@@ -21,6 +21,10 @@ py -m pip install mustatil
 
 mustatil
 
+# Conda
+
+$conda install mustatil::mustatil
+
 # Mustatil 4 Apple Mac OS Installer:
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4.0.0_macOS.pkg">Mac Installer

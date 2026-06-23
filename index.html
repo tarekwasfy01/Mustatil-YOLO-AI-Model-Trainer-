@@ -631,7 +631,7 @@
           <li>GIS-level object detection workspace</li>
           <li>Large-image and satellite-map detection</li>
           <li>Annotation workflow with classes and training data</li>
-          <li>YOLO training and model testing</li>
+          <li>YOLO, RF-DETR, R-CNN, Mask R-CNN, U-Net, SAM2, ADAF and DINO workflows</li>
           <li>GeoPackage and GIS export workflows</li>
           <li>Map-based visual review and detection correction</li>
           <li>Graphical AI pipeline builder</li>
@@ -643,29 +643,69 @@
         <div class="section-head">
           <h2>AI model support</h2>
           <p class="section-note">
-            Mustatil extends from YOLO into broader text-guided and DINO-based AI detection and training workflows.
+            Mustatil is built as a broad AI vision workspace: YOLO training, transformer-based detection, classical detection networks, segmentation models, prompt-based AI tools, and GIS-ready inference workflows.
           </p>
         </div>
 
         <div class="model-grid">
           <article class="model-card yolo">
-            <h3>YOLO</h3>
-            <p>Train and run YOLO models for object detection, large images, satellite imagery, and GIS export workflows.</p>
+            <h3>YOLO / Ultralytics models</h3>
+            <p>Train and run YOLO models for object detection, large images, satellite imagery, tiled inference, annotation review, and GIS export workflows. Suitable for YOLOv8, YOLOv11, and other Ultralytics-compatible models.</p>
+          </article>
+
+          <article class="model-card yolo">
+            <h3>RF-DETR</h3>
+            <p>DETR-style object detection workflow for modern transformer-based detection. Useful as an alternative to YOLO for project-based datasets and advanced object detection experiments.</p>
+          </article>
+
+          <article class="model-card yolo">
+            <h3>Faster R-CNN / R-CNN</h3>
+            <p>Classical region-based object detection support for workflows where proposal-based detection is useful, especially as a comparison or alternative to YOLO-style detection.</p>
+          </article>
+
+          <article class="model-card yolo">
+            <h3>Mask R-CNN</h3>
+            <p>Instance-segmentation workflow for object masks, not only rectangular bounding boxes. Useful where object outlines or separated instances are more important than simple boxes.</p>
+          </article>
+
+          <article class="model-card owl">
+            <h3>U-Net</h3>
+            <p>Semantic-segmentation workflow for pixel-level masks, raster-style classification, and image-to-mask tasks. Useful for remote sensing and map/image segmentation workflows.</p>
+          </article>
+
+          <article class="model-card owl">
+            <h3>SAM2</h3>
+            <p>Segment Anything 2 workflow for interactive and AI-assisted segmentation. Useful for mask creation, object separation, annotation assistance, and segmentation-based review.</p>
+          </article>
+
+          <article class="model-card owl">
+            <h3>ADAF</h3>
+            <p>Additional AI detection/filtering workflow inside the Mustatil ecosystem for advanced detection experiments, filtering, and model-assisted review.</p>
           </article>
 
           <article class="model-card owl">
             <h3>Google OWL-ViT / OWLv2</h3>
-            <p>Experimental open-vocabulary object detection from text prompts for flexible object search.</p>
+            <p>Experimental open-vocabulary object detection from text prompts. Useful for searching objects without training a fixed class-specific model first.</p>
           </article>
 
           <article class="model-card dino">
             <h3>Grounding DINO</h3>
-            <p>Experimental text-guided detection for prompt-based object localization and review.</p>
+            <p>Text-guided detection for flexible object search and prompt-based localization. Extends Mustatil beyond fixed-label YOLO workflows.</p>
+          </article>
+
+          <article class="model-card dino">
+            <h3>LAE-DINO</h3>
+            <p>DINO-based detection and training workflow with project-based dataset creation, model testing, and training support.</p>
+          </article>
+
+          <article class="model-card dino">
+            <h3>Detect Anything / LocateAnything</h3>
+            <p>Promptable detection workflow for flexible object localization. Designed as an experimental AI vision extension beside the regular YOLO/GIS workflow.</p>
           </article>
 
           <article class="model-card lae">
-            <h3>LAE-DINO</h3>
-            <p>DINO-based workflow with project-based dataset creation and training support.</p>
+            <h3>Universal AI trainer workflow</h3>
+            <p>Mustatil is designed to combine annotation, class management, dataset preparation, training, detection, review, and export in one desktop workflow instead of separating these steps across many tools.</p>
           </article>
         </div>
       </section>

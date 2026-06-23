@@ -60,9 +60,9 @@ mustatil
 
 $ conda install mustatil::mustatil
 
-# Mustatil 4 Apple Mac OS Installer:
+# Mustatil 5.7 Apple Mac OS Conda Installer:
 
-<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil4/Mustatil_4.0.0_macOS.pkg">Mac Installer
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_macOS.pkg>Mac Installer
 </a>
 
 # Mustatil 5.1 Linux Installer:

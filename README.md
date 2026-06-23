@@ -67,7 +67,7 @@ $ conda install mustatil::mustatil
 
 # Mustatil 5.6 Linux Installer:
 
-<a href=""https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Linux.deb>Linux Installer
+<a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Linux.deb">Linux Installer
 </a>
 
 

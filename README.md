@@ -99,5 +99,3 @@ Aditionally there is a GeoPackage converter for QGis if there is a Problem with 
 Mustatil means rectangle — a reference to both archaeological mustatils and the rectangular detection boxes used in AI object detection.
 The Program was written using AI.
 
-
-<iframe src="https://snapcraft.io/pymapstitcher/embedded?button=black" frameborder="0" width="100%" height="440px" style="border: 1px solid #CCC; border-radius: 2px;"></iframe>

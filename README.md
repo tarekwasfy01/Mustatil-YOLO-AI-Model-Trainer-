@@ -42,7 +42,10 @@ Mustatil also includes experimental support for additional AI vision models beyo
 <a href="https://doi.org/10.5281/zenodo.20481110">https://doi.org/10.5281/zenodo.20481110</a>
 
 The installer .exe does download Python and all dependencys then it starts the GUI. Don't worry, it takes some time and should be an option for non Python natives. Download from Github releases or on itch.
+# Websites:
+<a href="mustatil.de">mustatil.de</a>
 
+<a href="mustatil-ai.com">mustatil-ai.com</a>
 # Download the latest Windows Installer:
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">GitHub</a>

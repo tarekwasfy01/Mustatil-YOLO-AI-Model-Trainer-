@@ -28,7 +28,9 @@
   <a href="http://mustatil.de/">
     <img src="https://img.shields.io/badge/Website-mustatil.de-orange" alt="Mustatil Website">
   </a>
-
+  <a href="http://mustatil-ai.com/">
+    <img src="https://img.shields.io/badge/Website-mustatil.de-orange" alt="Mustatil Website">
+  </a>
   <a href="#features">
     <img src="https://img.shields.io/badge/Features-YOLO%20Training%20%7C%20GIS%20Detection%20%7C%20AI%20Pipeline-purple" alt="Features">
   </a>

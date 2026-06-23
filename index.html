@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Mustatil - GIS AI Vision Workspace</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Mustatil is a GIS-level AI vision workspace for annotation, YOLO training, large-scale detection, satellite-map analysis, and visual AI pipeline building.">
+
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg-soft: #101010;
+      --panel: #141414;
+      --panel-2: #181818;
+      --panel-3: #1e1e1e;
+      --text: #f2f2f2;
+      --muted: #a8a8a8;
+      --soft: #d7d7d7;
+      --line: rgba(255,255,255,0.08);
+      --line-strong: rgba(255,255,255,0.14);
+
+      /* subtle Mustatil AI/GIS accents */
+      --cyan: #23d6e6;
+      --green: #78d957;
+      --violet: #8f7cff;
+      --orange: #f08b3e;
+
+      --shadow: 0 18px 58px rgba(0,0,0,0.34);
+      --radius: 9px;
+      --maxw: 1160px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(35,214,230,0.045), transparent 26rem),
+        radial-gradient(circle at 90% 12%, rgba(143,124,255,0.045), transparent 28rem),
+        radial-gradient(circle at 18% 96%, rgba(120,217,87,0.035), transparent 24rem),
+        linear-gradient(180deg, #080808 0%, #0d0d0d 100%);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page {
+      width: min(var(--maxw), calc(100% - 28px));
+      margin: 0 auto;
+      padding: 26px 0 42px;
+    }
+
+    .frame {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: linear-gradient(180deg, #121212 0%, #0f0f0f 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 22px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.015);
+      color: var(--muted);
+      font-size: 0.86rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .topbar strong {
+      color: #ffffff;
+      font-weight: 880;
+    }
+
+    .topbar strong::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 10px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .hero {
+      padding: 48px 42px 38px;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0)),
+        radial-gradient(circle at 70% 28%, rgba(35,214,230,0.05), transparent 22rem);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 0.96fr 1.04fr;
+      gap: 34px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 820;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 34px;
+      height: 1px;
+      background: linear-gradient(90deg, var(--green), rgba(255,255,255,0.18));
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(4.4rem, 10vw, 8rem);
+      line-height: 0.88;
+      letter-spacing: -0.085em;
+      font-weight: 950;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      max-width: 720px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: clamp(1.04rem, 2.2vw, 1.24rem);
+    }
+
+    .subtitle strong {
+      color: var(--soft);
+      font-weight: 760;
+    }
+
+    .highlight-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.02);
+      color: #e8e8e8;
+      font-size: 0.87rem;
+      font-weight: 720;
+    }
+
+    .pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+
+    .pill.green::before { background: var(--green); }
+    .pill.violet::before { background: var(--violet); }
+    .pill.orange::before { background: var(--orange); }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: #f3f3f3;
+      color: #111111;
+      font-size: 0.94rem;
+      font-weight: 820;
+      transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(35,214,230,0.5);
+    }
+
+    .button.secondary {
+      background: transparent;
+      color: #f2f2f2;
+    }
+
+    .button.secondary:hover {
+      background: rgba(255,255,255,0.035);
+    }
+
+    .button.green:hover { border-color: rgba(120,217,87,0.45); }
+    .button.violet:hover { border-color: rgba(143,124,255,0.45); }
+    .button.orange:hover { border-color: rgba(240,139,62,0.45); }
+
+    .hero-panel {
+      padding: 10px;
+      border: 1px solid rgba(35,214,230,0.16);
+      border-radius: 12px;
+      background: #111111;
+    }
+
+    .hero-panel img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 8px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 26px;
+    }
+
+    .badge-row img {
+      display: block;
+      height: 22px;
+    }
+
+    .section {
+      padding: 34px 42px;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+    }
+
+    .section:nth-of-type(even) {
+      background: rgba(255,255,255,0.01);
+    }
+
+    .section:last-of-type {
+      border-bottom: 0;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: 0.56fr 1fr;
+      gap: 24px;
+      align-items: start;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(1.42rem, 2.5vw, 2.05rem);
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      color: #ffffff;
+    }
+
+    h2::after {
+      content: "";
+      display: block;
+      width: 48px;
+      height: 2px;
+      margin-top: 12px;
+      background: linear-gradient(90deg, var(--green), rgba(255,255,255,0.12));
+    }
+
+    .section-note {
+      margin: 0;
+      color: var(--muted);
+      font-weight: 560;
+    }
+
+    .section p {
+      margin: 0;
+      color: #d8d8d8;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 24px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .feature-grid li {
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      color: #efefef;
+      font-weight: 680;
+    }
+
+    .feature-grid li::before {
+      content: "•";
+      margin-right: 10px;
+      color: var(--green);
+      font-weight: 900;
+    }
+
+    .feature-grid li:nth-child(3n)::before { color: var(--cyan); }
+    .feature-grid li:nth-child(4n)::before { color: var(--violet); }
+    .feature-grid li:nth-child(5n)::before { color: var(--orange); }
+
+    .model-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .model-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .model-card h3 {
+      margin: 0 0 8px;
+      color: #ffffff;
+      font-size: 1.06rem;
+    }
+
+    .model-card p {
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .model-card.yolo { border-color: rgba(120,217,87,0.16); }
+    .model-card.owl { border-color: rgba(35,214,230,0.16); }
+    .model-card.dino { border-color: rgba(143,124,255,0.16); }
+    .model-card.lae { border-color: rgba(240,139,62,0.16); }
+
+    .code-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .code-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .code-card h3 {
+      margin: 0;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--line);
+      color: #ffffff;
+      font-size: 1rem;
+    }
+
+    .code-block {
+      margin: 0;
+      padding: 16px;
+      overflow-x: auto;
+      background: #0b0b0b;
+      color: #f2f2f2;
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .download-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 164px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .download-card:nth-child(1) { border-color: rgba(120,217,87,0.18); }
+    .download-card:nth-child(2) { border-color: rgba(35,214,230,0.18); }
+    .download-card:nth-child(3) { border-color: rgba(240,139,62,0.16); }
+    .download-card:nth-child(4) { border-color: rgba(143,124,255,0.16); }
+    .download-card:nth-child(5) { border-color: rgba(255,255,255,0.14); }
+    .download-card:nth-child(6) { border-color: rgba(35,214,230,0.16); }
+
+    .download-card h3 {
+      margin: 0 0 8px;
+      color: #ffffff;
+      font-size: 1.04rem;
+    }
+
+    .download-card p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .download-card .button {
+      width: fit-content;
+      min-height: 40px;
+      padding: 9px 14px;
+      font-size: 0.92rem;
+    }
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .image-grid img,
+    .wide-image img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: var(--radius);
+      border: 1px solid var(--line-strong);
+      background: #111111;
+    }
+
+    .wide-image {
+      margin-top: 24px;
+    }
+
+    .doi-box {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 14px 16px;
+      border: 1px solid rgba(35,214,230,0.2);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.02);
+      color: #f0f0f0;
+      font-weight: 760;
+    }
+
+    .quiet-note {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-left: 2px solid var(--orange);
+      border-radius: 0 8px 8px 0;
+      background: rgba(255,255,255,0.02);
+      color: #d5d5d5;
+    }
+
+    footer {
+      padding: 24px 42px 28px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.94rem;
+      background: rgba(255,255,255,0.01);
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid,
+      .section-head,
+      .download-grid,
+      .feature-grid,
+      .model-grid,
+      .code-grid,
+      .image-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .page {
+        width: min(100% - 18px, var(--maxw));
+        padding-top: 12px;
+      }
+
+      .hero,
+      .section,
+      footer {
+        padding-left: 22px;
+        padding-right: 22px;
+      }
+
+      .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+
+      .actions,
+      .button,
+      .download-card .button {
+        width: 100%;
+      }
+
+      .download-card {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <main class="frame">
+      <div class="topbar">
+        <strong>Mustatil</strong>
+        <span>GIS AI Vision Workspace · YOLO Training · Detection · AI Pipelines</span>
+      </div>
+
+      <section class="hero">
+        <div class="badge-row" aria-label="Project badges">
+          <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-">
+            <img src="https://img.shields.io/badge/GitHub-Repository-black" alt="GitHub Repository">
+          </a>
+          <a href="https://pypi.org/project/mustatil/">
+            <img src="https://img.shields.io/pypi/v/mustatil?label=PyPI" alt="PyPI version">
+          </a>
+          <a href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">
+            <img src="https://img.shields.io/badge/Download-itch.io-red" alt="Download on itch.io">
+          </a>
+          <a href="https://doi.org/10.5281/zenodo.20481110">
+            <img src="https://img.shields.io/badge/Zenodo-DOI%2010.5281%2Fzenodo.20481110-blue?style=flat&logo=zenodo" alt="Zenodo DOI">
+          </a>
+          <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/blob/main/LICENSE">
+            <img src="https://img.shields.io/badge/License-LGPL%20v3-blue" alt="License LGPL v3">
+          </a>
+          <a href="https://www.python.org/downloads/">
+            <img src="https://img.shields.io/badge/Python-3.11%2B-brightgreen" alt="Python 3.11+">
+          </a>
+        </div>
+
+        <div class="hero-grid">
+          <div>
+            <div class="eyebrow">GIS-level AI vision workspace</div>
+            <h1>Mustatil</h1>
+            <p class="subtitle">
+              <strong>Annotation, YOLO training, large-scale detection, satellite-map analysis, and visual pipeline building</strong> in one desktop application — designed for images and map areas too large for conventional computer-vision tools.
+            </p>
+
+            <div class="highlight-row">
+              <span class="pill green">YOLO training</span>
+              <span class="pill">GIS detection</span>
+              <span class="pill violet">AI pipelines</span>
+              <span class="pill orange">Satellite maps</span>
+            </div>
+
+            <div class="actions" aria-label="Main links">
+              <a class="button green" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-">
+                GitHub Repository
+              </a>
+              <a class="button secondary" href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">
+                Download on itch.io
+              </a>
+              <a class="button secondary violet" href="https://pypi.org/project/mustatil/">
+                PyPI Package
+              </a>
+              <a class="button secondary orange" href="https://doi.org/10.5281/zenodo.20481110">
+                Zenodo DOI
+              </a>
+            </div>
+          </div>
+
+          <div class="hero-panel">
+            <img
+              width="1280"
+              height="720"
+              alt="Mustatil workspace screenshot"
+              src="https://github.com/user-attachments/assets/e869cd6a-3c36-42e1-b587-65dfc3edcbbb">
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="about">
+        <div class="section-head">
+          <h2>About</h2>
+          <p class="section-note">
+            A desktop workspace for dataset creation, model training, geospatial inference, map-based review, and graphical AI pipelines.
+          </p>
+        </div>
+
+        <p>
+          Mustatil is an integrated GIS-level AI vision workspace for annotation, YOLO training, large-scale detection, satellite-map analysis, and visual pipeline building. It combines dataset creation, model training, geospatial inference, map-based review, and graphical AI pipelines in one desktop application.
+        </p>
+
+        <div class="quiet-note">
+          Mustatil means rectangle — a reference to both archaeological mustatils and the rectangular detection boxes used in AI object detection.
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-head">
+          <h2>Core features</h2>
+          <p class="section-note">
+            Practical AI and GIS tools for very large images, satellite maps, annotations, training, and export.
+          </p>
+        </div>
+
+        <ul class="feature-grid">
+          <li>GIS-level object detection workspace</li>
+          <li>Large-image and satellite-map detection</li>
+          <li>Annotation workflow with classes and training data</li>
+          <li>YOLO training and model testing</li>
+          <li>GeoPackage and GIS export workflows</li>
+          <li>Map-based visual review and detection correction</li>
+          <li>Graphical AI pipeline builder</li>
+          <li>Desktop installer workflow for non-Python users</li>
+        </ul>
+      </section>
+
+      <section class="section" id="models">
+        <div class="section-head">
+          <h2>AI model support</h2>
+          <p class="section-note">
+            Mustatil extends from YOLO into broader text-guided and DINO-based AI detection and training workflows.
+          </p>
+        </div>
+
+        <div class="model-grid">
+          <article class="model-card yolo">
+            <h3>YOLO</h3>
+            <p>Train and run YOLO models for object detection, large images, satellite imagery, and GIS export workflows.</p>
+          </article>
+
+          <article class="model-card owl">
+            <h3>Google OWL-ViT / OWLv2</h3>
+            <p>Experimental open-vocabulary object detection from text prompts for flexible object search.</p>
+          </article>
+
+          <article class="model-card dino">
+            <h3>Grounding DINO</h3>
+            <p>Experimental text-guided detection for prompt-based object localization and review.</p>
+          </article>
+
+          <article class="model-card lae">
+            <h3>LAE-DINO</h3>
+            <p>DINO-based workflow with project-based dataset creation and training support.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="install">
+        <div class="section-head">
+          <h2>Install</h2>
+          <p class="section-note">
+            Use the installer for a guided desktop setup, or install directly through Python / Conda.
+          </p>
+        </div>
+
+        <div class="code-grid">
+          <article class="code-card">
+            <h3>Python package</h3>
+            <pre class="code-block"><code>py -m pip install mustatil
+mustatil</code></pre>
+          </article>
+
+          <article class="code-card">
+            <h3>Conda</h3>
+            <pre class="code-block"><code>conda install mustatil::mustatil</code></pre>
+          </article>
+        </div>
+
+        <div class="quiet-note">
+          The Windows installer downloads Python and all dependencies, then starts the GUI. The first launch can take some time and is intended as a simple option for users who do not normally work with Python.
+        </div>
+      </section>
+
+      <section class="section" id="downloads">
+        <div class="section-head">
+          <h2>Downloads</h2>
+          <p class="section-note">
+            Latest Mustatil 5.6 installers and project links.
+          </p>
+        </div>
+
+        <div class="download-grid">
+          <article class="download-card">
+            <div>
+              <h3>Windows installer</h3>
+              <p>Mustatil 5.6 setup .exe for Windows.</p>
+            </div>
+            <a class="button green" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">
+              Download Windows EXE
+            </a>
+          </article>
+
+          <article class="download-card">
+            <div>
+              <h3>macOS installer</h3>
+              <p>Mustatil 5.6 Apple macOS .pkg installer.</p>
+            </div>
+            <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_macOS.pkg">
+              Download macOS PKG
+            </a>
+          </article>
+
+          <article class="download-card">
+            <div>
+              <h3>Linux installer</h3>
+              <p>Mustatil 5.6 Linux .deb installer.</p>
+            </div>
+            <a class="button secondary orange" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Linux.deb">
+              Download Linux DEB
+            </a>
+          </article>
+
+          <article class="download-card">
+            <div>
+              <h3>itch.io</h3>
+              <p>Alternative download page and project presentation.</p>
+            </div>
+            <a class="button secondary violet" href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">
+              Open itch.io
+            </a>
+          </article>
+
+          <article class="download-card">
+            <div>
+              <h3>Project websites</h3>
+              <p>Main Mustatil websites.</p>
+            </div>
+            <div class="actions">
+              <a class="button secondary" href="https://mustatil.de">mustatil.de</a>
+              <a class="button secondary" href="https://mustatil-ai.com">mustatil-ai.com</a>
+            </div>
+          </article>
+
+          <article class="download-card">
+            <div>
+              <h3>GitHub releases</h3>
+              <p>Release files, installer history, and source code.</p>
+            </div>
+            <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases">
+              Open Releases
+            </a>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="screenshots">
+        <div class="section-head">
+          <h2>Screenshots</h2>
+          <p class="section-note">
+            Mustatil workspace views for detection, annotation, training, map analysis, and AI pipelines.
+          </p>
+        </div>
+
+        <div class="image-grid">
+          <img width="1280" height="720" alt="Mustatil screenshot 1" src="https://github.com/user-attachments/assets/e869cd6a-3c36-42e1-b587-65dfc3edcbbb">
+          <img width="1280" height="720" alt="Mustatil screenshot 2" src="https://github.com/user-attachments/assets/fe9d1958-78fb-498c-96bd-636aae9ed342">
+          <img width="1280" height="720" alt="Mustatil screenshot 3" src="https://github.com/user-attachments/assets/7e9099d2-20c1-43e7-b5d9-fb0f05e61ff9">
+          <img width="1280" height="720" alt="Mustatil screenshot 4" src="https://github.com/user-attachments/assets/03291052-c523-4aee-8007-d5c964e9115b">
+        </div>
+      </section>
+
+      <section class="section" id="archive">
+        <div class="section-head">
+          <h2>Scientific archive</h2>
+          <p class="section-note">
+            Permanent Zenodo DOI and citation reference.
+          </p>
+        </div>
+
+        <a class="doi-box" href="https://doi.org/10.5281/zenodo.20481110">
+          DOI: https://doi.org/10.5281/zenodo.20481110
+        </a>
+      </section>
+
+      <section class="section" id="notes">
+        <div class="section-head">
+          <h2>Notes</h2>
+          <p class="section-note">
+            Additional GIS compatibility and project information.
+          </p>
+        </div>
+
+        <p>
+          Additionally, there is a GeoPackage converter for QGIS if there is a problem with files. Normally, the EPSG code for a layer can be changed directly in QGIS.
+        </p>
+
+        <div class="quiet-note">
+          The program was written using AI.
+        </div>
+      </section>
+
+      <footer>
+        Mustatil by Tarek Wasfy and AI.
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

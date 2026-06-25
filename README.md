@@ -75,7 +75,9 @@ $ conda install mustatil::mustatil
 
 <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Linux.deb">Linux Installer
 </a>
-
+<a href="https://snapcraft.io/mustatil">
+    <img alt="Get it from the Snap Store" src=https://snapcraft.io/en/dark/install.svg />
+  </a>
 
 
 <img width="1280" height="720" alt="Screenshot 2026-05-29 182916" src="https://github.com/user-attachments/assets/e869cd6a-3c36-42e1-b587-65dfc3edcbbb" />

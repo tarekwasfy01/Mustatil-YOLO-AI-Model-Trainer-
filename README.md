@@ -27,6 +27,7 @@
     <img alt="Get it from the Snap Store" src="https://snapcraft.io/en/dark/install.svg" width="220">
   </a>
 </p>
+<a href="https://get.microsoft.com/installer/download/9PN11ZK9QL42?referrer=appbadge" target="_self" > <img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/> </a>
 
 <img alt="Mustatil workspace screenshot" src="https://github.com/user-attachments/assets/e869cd6a-3c36-42e1-b587-65dfc3edcbbb" width="900">
 

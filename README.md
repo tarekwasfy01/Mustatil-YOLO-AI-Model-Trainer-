@@ -1,5 +1,6 @@
 
-# I am currently working on a new C++ GUI, this will make it a Windows only project. I will still recomend the 5.6 version, because it has all functions and is available on all platforms. Unfortunately this will also be the end for new pip and conda versions. It will stay the 5.6 there.
+# I am currently working on a new C++ GUI, this will make it a Windows only project. I will still recomend the 5.6 version, because it has all functions and is available on all platforms. Unfortunately this will also be the end for new pip and conda versions. It will stay the 5.6 there. 
+# I am planing to change to a paid format where it will be available in the windows store only for 4,99 $. The 5.6 will stay opensource and free forever!
 
 
 

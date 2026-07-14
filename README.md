@@ -16,8 +16,8 @@ I have chosen to publish in the Microsoft Store, because there it gets licenced 
                    
 My Honest view is that it does have some improvements, but overall there has not been added a lot of new features. Many features, like the GIS Review Tab do perform better in version 5.6. Overall I do still recommend the free version Mustatil 5.6, maybe Mustatil 6 will get more improvements in the future, but right now it might just be a way to donate. I am planning on adding more Lidar features in the future.
 
-# I am currently working on a new C++ GUI, this will make it a Windows only project. I will still recomend the 5.6 version, because it has all functions and is available on all platforms. Unfortunately this will also be the end for new pip and conda versions. It will stay the 5.6 there. 
-# I am planing to change to a paid format where it will be available in the Microsoft Store exclusivly for 14,99 $. The 5.6 will stay opensource and free forever!
+## I am currently working on a new C++ GUI, this will make it a Windows only project. I will still recomend the 5.6 version, because it has all functions and is available on all platforms. Unfortunately this will also be the end for new pip and conda versions. It will stay the 5.6 there. 
+## I am planing to change to a paid format where it will be available in the Microsoft Store exclusivly for 14,99 $. The 5.6 will stay opensource and free forever!
 
 
 

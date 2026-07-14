@@ -2,8 +2,6 @@
 
 The Mustatil 6 release might be in a few days, I am working on getting it published in the Microsoft Store again, as an Update. Right now it is in certification. But honestly I do think that the Python only 5.6 Version might be the better one. Version 5.6 will stay free and is still the recommended stable version. Version 6 will be under development and hopefully will become the better version over time.
 I have chosen to publish in the Microsoft Store, because there it gets licenced for free if its packaged as a MSIX. This gives you a licenced and signed version, wich is proofen to be unharmfull and virus free.
-# I am currently working on a new C++ GUI, this will make it a Windows only project. I will still recomend the 5.6 version, because it has all functions and is available on all platforms. Unfortunately this will also be the end for new pip and conda versions. It will stay the 5.6 there. 
-# I am planing to change to a paid format where it will be available in the Microsoft Store exclusivly for 14,99 $. The 5.6 will stay opensource and free forever!
 
 ## My Tip for you is to aquire Mustatil from the Microsoft Store as long as it is free, then you will get the update for free aswell. 
     Update Notes:  - New C++ Gui with dark look (there is a setting for bright mode)
@@ -12,8 +10,15 @@ I have chosen to publish in the Microsoft Store, because there it gets licenced 
                    - Multi GPU support
                    - Faster Startup time
                    - It is Packaged as a All in One, so no need to download Runtimes for each Model
-
+                   
 My Honest view is that it does have some improvements, but overall there has not been added a lot of new features. Many features, like the GIS Review Tab do perform better in version 5.6. Overall I do still recommend the free version Mustatil 5.6, maybe Mustatil 6 will get more improvements in the future, but right now it might just be a way to donate. I am planning on adding more Lidar features in the future.
+
+# I am currently working on a new C++ GUI, this will make it a Windows only project. I will still recomend the 5.6 version, because it has all functions and is available on all platforms. Unfortunately this will also be the end for new pip and conda versions. It will stay the 5.6 there. 
+# I am planing to change to a paid format where it will be available in the Microsoft Store exclusivly for 14,99 $. The 5.6 will stay opensource and free forever!
+
+
+
+
                     
 
 

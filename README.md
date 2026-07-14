@@ -10,6 +10,8 @@ I have chosen to publish in the Microsoft Store, because there it gets licenced 
                    - Multi GPU support
                    - Faster startup time
                    - It is packaged as a All in One, so no need to download runtimes for each model
+    <img width="1280" height="720" alt="Screenshot 2026-07-14 191226" src="https://github.com/user-attachments/assets/25778ab8-2e0e-479d-8313-53a9c1845ebd" />
+
                    
 My Honest view is that it does have some improvements, but overall there has not been added a lot of new features. Many features, like the GIS Review Tab do perform better in version 5.6. Overall I do still recommend the free version Mustatil 5.6, maybe Mustatil 6 will get more improvements in the future, but right now it might just be a way to donate. I am planning on adding more Lidar features in the future.
 

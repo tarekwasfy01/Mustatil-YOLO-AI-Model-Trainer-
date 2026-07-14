@@ -1,7 +1,7 @@
 # Update: 14.07.2026 
 
-The Mustatil 6 release might be in a few days, I am working on getting it published in the Microsoft Store again, as an Update. But honestly I do think that the Python only 5.6 Version might be the better one. Version 5.6 will stay free and is still the recommended stable version. Version 6 will be under development and hopefully will become the better version over time.
-
+The Mustatil 6 release might be in a few days, I am working on getting it published in the Microsoft Store again, as an Update. Right now it is in certification. But honestly I do think that the Python only 5.6 Version might be the better one. Version 5.6 will stay free and is still the recommended stable version. Version 6 will be under development and hopefully will become the better version over time.
+I have chosen to publish in the Microsoft Store, because there it gets licenced for free if its packaged as a MSIX. This gives you a licenced and signed version, wich is proofen to be unharmfull and virus free.
 # I am currently working on a new C++ GUI, this will make it a Windows only project. I will still recomend the 5.6 version, because it has all functions and is available on all platforms. Unfortunately this will also be the end for new pip and conda versions. It will stay the 5.6 there. 
 # I am planing to change to a paid format where it will be available in the Microsoft Store exclusivly for 14,99 $. The 5.6 will stay opensource and free forever!
 

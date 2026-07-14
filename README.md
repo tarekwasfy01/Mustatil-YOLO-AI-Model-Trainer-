@@ -5,11 +5,11 @@ I have chosen to publish in the Microsoft Store, because there it gets licenced 
 
 ## My Tip for you is to aquire Mustatil from the Microsoft Store as long as it is free, then you will get the update for free aswell. 
     Update Notes:  - New C++ Gui with dark look (there is a setting for bright mode)
-                   - Unfortuanatly ADAF did not make it into the new Version
+                   - Unfortuanatly ADAF did not make it into the new version
                    - Standard DINO Model is included
                    - Multi GPU support
-                   - Faster Startup time
-                   - It is Packaged as a All in One, so no need to download Runtimes for each Model
+                   - Faster startup time
+                   - It is packaged as a All in One, so no need to download runtimes for each model
                    
 My Honest view is that it does have some improvements, but overall there has not been added a lot of new features. Many features, like the GIS Review Tab do perform better in version 5.6. Overall I do still recommend the free version Mustatil 5.6, maybe Mustatil 6 will get more improvements in the future, but right now it might just be a way to donate. I am planning on adding more Lidar features in the future.
 

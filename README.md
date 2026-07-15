@@ -1,6 +1,10 @@
 # Update 15.07.2026
 
-Mustatil 6 is now available in the Microsoft Store 
+Mustatil 6 is now available in the Microsoft Store and the first ten viewers do get it for free!
+
+CODE: T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ	
+ <a href="http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ">http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ</a>
+
 
 <a href="https://apps.microsoft.com/detail/9PN11ZK9QL42?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
 	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>

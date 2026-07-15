@@ -3,7 +3,7 @@
 Mustatil 6 is now available in the Microsoft Store 
 
 <a href="https://apps.microsoft.com/detail/9PN11ZK9QL42?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
-	<img src="https://get.microsoft.com/images/en-us%20light.svg" width="200"/>
+	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
 </a>
 
 # Update: 14.07.2026 

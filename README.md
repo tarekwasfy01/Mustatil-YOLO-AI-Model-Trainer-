@@ -3,7 +3,8 @@
 Mustatil 6 is now available in the Microsoft Store and the first ten viewers do get it for free!
 
 CODE: T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ	
- <a href="http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ">http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ</a>
+
+<a href="http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ">http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ</a>
 
 
 <a href="https://apps.microsoft.com/detail/9PN11ZK9QL42?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">

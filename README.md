@@ -1,5 +1,5 @@
 # Update 15.07.2026
-I am sorry but because of the version number the installation from 
+I am sorry but because of the version number the installation does still install the old Version!
 Mustatil 6 is now available in the Microsoft Store and the first ten viewers do get it for free!
 
 CODE: T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ	

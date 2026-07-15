@@ -1,3 +1,11 @@
+#Update 15.07.2026
+
+Mustatil 6 is now available in the Microsoft Store 
+
+<a href="https://apps.microsoft.com/detail/9PN11ZK9QL42?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
+	<img src="https://get.microsoft.com/images/en-us%20light.svg" width="200"/>
+</a>
+
 # Update: 14.07.2026 
 
 The Mustatil 6 release might be in a few days, I am working on getting it published in the Microsoft Store again, as an update. Right now it is in certification. But honestly I do think that the Python only 5.6 version might be the better one. Version 5.6 will stay free and is still the recommended stable version. Version 6 will be under development and hopefully will become the better version over time.

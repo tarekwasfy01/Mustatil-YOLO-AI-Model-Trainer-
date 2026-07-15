@@ -2,113 +2,131 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Mustatil - GIS AI Vision Workspace</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Mustatil is a GIS-level AI vision workspace for annotation, YOLO training, large-scale detection, satellite-map analysis, and visual AI pipeline building.">
+  <title>Mustatil 6 — AI-Powered Geospatial Analysis Workspace</title>
+  <meta name="description" content="Mustatil 6 is an AI-powered geospatial analysis workspace for huge GeoTIFF and BigTIFF imagery, object detection, annotation, training, SAM2 segmentation, video analysis, and GIS export.">
+  <meta name="theme-color" content="#0b0b0c">
+  <meta property="og:title" content="Mustatil 6 — AI-Powered Geospatial Analysis Workspace">
+  <meta property="og:description" content="Detection, annotation, training, segmentation, video analysis, and GIS export in one desktop workspace.">
+  <meta property="og:image" content="assets/mustatil-6-hero.webp">
 
   <style>
     :root {
-      --bg: #0a0a0a;
-      --bg-soft: #101010;
-      --panel: #141414;
-      --panel-2: #181818;
-      --panel-3: #1e1e1e;
-      --text: #f2f2f2;
-      --muted: #a8a8a8;
-      --soft: #d7d7d7;
-      --line: rgba(255,255,255,0.08);
-      --line-strong: rgba(255,255,255,0.14);
-
-      /* subtle Mustatil AI/GIS accents */
-      --cyan: #23d6e6;
-      --green: #78d957;
-      --violet: #8f7cff;
-      --orange: #f08b3e;
-
-      --shadow: 0 18px 58px rgba(0,0,0,0.34);
-      --radius: 9px;
-      --maxw: 1160px;
+      --bg: #070708;
+      --bg-soft: #0d0e10;
+      --panel: #111214;
+      --panel-2: #17181b;
+      --text: #f5f5f5;
+      --muted: #a8a9ad;
+      --soft: #d7d7da;
+      --line: rgba(255,255,255,.09);
+      --line-strong: rgba(255,255,255,.16);
+      --orange: #ff7a18;
+      --orange-soft: #ff9d4a;
+      --green: #65d77a;
+      --cyan: #25d6e8;
+      --violet: #9a82ff;
+      --radius: 14px;
+      --shadow: 0 22px 75px rgba(0,0,0,.46);
+      --maxw: 1440px;
     }
 
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body {
       margin: 0;
       color: var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.65;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.62;
       background:
-        radial-gradient(circle at 12% 0%, rgba(35,214,230,0.045), transparent 26rem),
-        radial-gradient(circle at 90% 12%, rgba(143,124,255,0.045), transparent 28rem),
-        radial-gradient(circle at 18% 96%, rgba(120,217,87,0.035), transparent 24rem),
-        linear-gradient(180deg, #080808 0%, #0d0d0d 100%);
+        radial-gradient(circle at 8% 0%, rgba(255,122,24,.11), transparent 30rem),
+        radial-gradient(circle at 92% 15%, rgba(255,122,24,.055), transparent 34rem),
+        linear-gradient(180deg, #070708 0%, #0b0c0e 100%);
     }
 
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; }
 
     .page {
       width: min(var(--maxw), calc(100% - 28px));
       margin: 0 auto;
-      padding: 26px 0 42px;
+      padding: 24px 0 46px;
     }
 
     .frame {
       overflow: hidden;
       border: 1px solid var(--line);
-      border-radius: 15px;
-      background: linear-gradient(180deg, #121212 0%, #0f0f0f 100%);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #101113 0%, #0d0e10 100%);
       box-shadow: var(--shadow);
     }
 
     .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      padding: 14px 22px;
+      gap: 20px;
+      padding: 13px 24px;
       border-bottom: 1px solid var(--line);
-      background: rgba(255,255,255,0.015);
-      color: var(--muted);
-      font-size: 0.86rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      background: rgba(12,13,15,.88);
+      backdrop-filter: blur(16px);
     }
 
-    .topbar strong {
-      color: #ffffff;
-      font-weight: 880;
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+      font-size: .94rem;
+      font-weight: 900;
+      letter-spacing: .04em;
     }
 
-    .topbar strong::before {
-      content: "";
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      margin-right: 10px;
+    .brand-dot {
+      width: 9px;
+      height: 9px;
       border-radius: 50%;
-      background: var(--green);
+      background: var(--orange);
+      box-shadow: 0 0 18px rgba(255,122,24,.75);
     }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 5px 15px;
+      color: var(--muted);
+      font-size: .84rem;
+      font-weight: 700;
+    }
+
+    .nav a:hover { color: #fff; }
 
     .hero {
-      padding: 48px 42px 38px;
+      padding: 36px 42px 42px;
       border-bottom: 1px solid var(--line);
       background:
-        linear-gradient(180deg, rgba(255,255,255,0.012), rgba(255,255,255,0)),
-        radial-gradient(circle at 70% 28%, rgba(35,214,230,0.05), transparent 22rem);
+        linear-gradient(135deg, rgba(255,122,24,.05), transparent 42%),
+        radial-gradient(circle at 76% 26%, rgba(255,122,24,.08), transparent 28rem);
     }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 26px;
+    }
+
+    .badge-row img { display: block; height: 22px; }
+    .badge-row .store-badge { width: 200px; height: auto; }
 
     .hero-grid {
       display: grid;
-      grid-template-columns: 0.96fr 1.04fr;
+      grid-template-columns: minmax(340px, .78fr) minmax(0, 1.22fr);
       gap: 34px;
       align-items: center;
     }
@@ -117,11 +135,10 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 16px;
-      color: var(--muted);
-      font-size: 0.82rem;
-      font-weight: 820;
-      letter-spacing: 0.16em;
+      color: var(--orange-soft);
+      font-size: .8rem;
+      font-weight: 900;
+      letter-spacing: .17em;
       text-transform: uppercase;
     }
 
@@ -129,34 +146,32 @@
       content: "";
       width: 34px;
       height: 1px;
-      background: linear-gradient(90deg, var(--green), rgba(255,255,255,0.18));
+      background: linear-gradient(90deg, var(--orange), rgba(255,255,255,.15));
     }
 
     h1 {
-      margin: 0;
-      font-size: clamp(4.4rem, 10vw, 8rem);
-      line-height: 0.88;
-      letter-spacing: -0.085em;
+      margin: 14px 0 0;
+      font-size: clamp(4rem, 8vw, 7.6rem);
+      line-height: .9;
+      letter-spacing: -.075em;
       font-weight: 950;
-      color: #ffffff;
     }
+
+    h1 span { color: var(--orange); }
 
     .subtitle {
-      max-width: 720px;
+      max-width: 680px;
       margin: 24px 0 0;
       color: var(--muted);
-      font-size: clamp(1.04rem, 2.2vw, 1.24rem);
+      font-size: clamp(1.04rem, 1.8vw, 1.28rem);
     }
 
-    .subtitle strong {
-      color: var(--soft);
-      font-weight: 760;
-    }
+    .subtitle strong { color: #ededee; }
 
-    .highlight-row {
+    .pills {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 9px;
       margin-top: 24px;
     }
 
@@ -167,10 +182,10 @@
       padding: 7px 11px;
       border: 1px solid var(--line);
       border-radius: 999px;
-      background: rgba(255,255,255,0.02);
-      color: #e8e8e8;
-      font-size: 0.87rem;
-      font-weight: 720;
+      background: rgba(255,255,255,.025);
+      color: #e9e9ea;
+      font-size: .86rem;
+      font-weight: 760;
     }
 
     .pill::before {
@@ -178,12 +193,12 @@
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: var(--cyan);
+      background: var(--orange);
     }
 
     .pill.green::before { background: var(--green); }
+    .pill.cyan::before { background: var(--cyan); }
     .pill.violet::before { background: var(--violet); }
-    .pill.orange::before { background: var(--orange); }
 
     .actions {
       display: flex;
@@ -197,121 +212,120 @@
       align-items: center;
       justify-content: center;
       min-height: 44px;
-      padding: 10px 16px;
+      padding: 10px 17px;
       border: 1px solid var(--line-strong);
-      border-radius: var(--radius);
-      background: #f3f3f3;
-      color: #111111;
-      font-size: 0.94rem;
-      font-weight: 820;
-      transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+      border-radius: 10px;
+      background: #f5f5f5;
+      color: #111;
+      font-size: .93rem;
+      font-weight: 860;
+      transition: transform .16s ease, border-color .16s ease, background .16s ease;
     }
 
     .button:hover {
       transform: translateY(-1px);
-      border-color: rgba(35,214,230,0.5);
+      border-color: rgba(255,122,24,.72);
     }
 
-    .button.secondary {
-      background: transparent;
-      color: #f2f2f2;
-    }
-
-    .button.secondary:hover {
-      background: rgba(255,255,255,0.035);
-    }
-
-    .button.green:hover { border-color: rgba(120,217,87,0.45); }
-    .button.violet:hover { border-color: rgba(143,124,255,0.45); }
-    .button.orange:hover { border-color: rgba(240,139,62,0.45); }
+    .button.orange { background: var(--orange); color: #111; border-color: var(--orange); }
+    .button.secondary { background: transparent; color: #f1f1f2; }
+    .button.secondary:hover { background: rgba(255,255,255,.04); }
 
     .hero-panel {
-      padding: 10px;
-      border: 1px solid rgba(35,214,230,0.16);
-      border-radius: 12px;
-      background: #111111;
+      padding: 8px;
+      border: 1px solid rgba(255,122,24,.28);
+      border-radius: 15px;
+      background: #090a0b;
+      box-shadow: 0 0 42px rgba(255,122,24,.09);
     }
 
     .hero-panel img {
+      display: block;
       width: 100%;
       height: auto;
-      display: block;
-      border-radius: 8px;
+      border-radius: 10px;
     }
 
-    .badge-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: 0 0 26px;
+    .edition-strip {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      padding: 22px 42px;
+      border-bottom: 1px solid var(--line);
+      background: #0b0c0e;
     }
 
-    .badge-row img {
-      display: block;
-      height: 22px;
+    .edition-card {
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
     }
 
-    .badge-row img.ms-store-badge {
-      width: 200px;
-      max-width: 100%;
-      height: auto;
+    .edition-card.free { border-color: rgba(101,215,122,.28); }
+    .edition-card.paid { border-color: rgba(255,122,24,.35); }
+
+    .edition-card .label {
+      display: inline-block;
+      margin-bottom: 7px;
+      font-size: .75rem;
+      font-weight: 900;
+      letter-spacing: .13em;
+      text-transform: uppercase;
     }
+
+    .edition-card.free .label { color: var(--green); }
+    .edition-card.paid .label { color: var(--orange-soft); }
+    .edition-card h3 { margin: 0 0 5px; font-size: 1.12rem; }
+    .edition-card p { margin: 0; color: var(--muted); }
 
     .section {
-      padding: 34px 42px;
+      padding: 40px 42px;
       border-bottom: 1px solid var(--line);
-      background: transparent;
     }
 
-    .section:nth-of-type(even) {
-      background: rgba(255,255,255,0.01);
-    }
-
-    .section:last-of-type {
-      border-bottom: 0;
-    }
+    .section:nth-of-type(even) { background: rgba(255,255,255,.012); }
 
     .section-head {
       display: grid;
-      grid-template-columns: 0.56fr 1fr;
-      gap: 24px;
+      grid-template-columns: .48fr 1fr;
+      gap: 28px;
       align-items: start;
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
 
     h2 {
       margin: 0;
-      font-size: clamp(1.42rem, 2.5vw, 2.05rem);
+      color: #fff;
+      font-size: clamp(1.55rem, 2.5vw, 2.25rem);
       line-height: 1.08;
-      letter-spacing: -0.04em;
-      color: #ffffff;
+      letter-spacing: -.04em;
     }
 
     h2::after {
       content: "";
       display: block;
-      width: 48px;
+      width: 54px;
       height: 2px;
-      margin-top: 12px;
-      background: linear-gradient(90deg, var(--green), rgba(255,255,255,0.12));
+      margin-top: 13px;
+      background: linear-gradient(90deg, var(--orange), rgba(255,255,255,.12));
     }
 
-    .section-note {
-      margin: 0;
-      color: var(--muted);
-      font-weight: 560;
-    }
+    .section-note { margin: 0; color: var(--muted); font-weight: 560; }
+    .section > p { margin: 0; color: #d6d6d8; }
 
-    .section p {
-      margin: 0;
-      color: #d8d8d8;
+    .feature-grid,
+    .model-grid,
+    .download-grid,
+    .trainer-grid,
+    .image-grid {
+      display: grid;
+      gap: 14px;
+      margin-top: 24px;
     }
 
     .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-      margin: 24px 0 0;
+      grid-template-columns: repeat(2, minmax(0,1fr));
       padding: 0;
       list-style: none;
     }
@@ -319,220 +333,209 @@
     .feature-grid li {
       padding: 16px 18px;
       border: 1px solid var(--line);
-      border-radius: var(--radius);
+      border-radius: 11px;
       background: var(--panel);
-      color: #efefef;
-      font-weight: 680;
+      color: #ededee;
+      font-weight: 690;
     }
 
     .feature-grid li::before {
       content: "•";
       margin-right: 10px;
-      color: var(--green);
-      font-weight: 900;
+      color: var(--orange);
+      font-weight: 950;
     }
 
-    .feature-grid li:nth-child(3n)::before { color: var(--cyan); }
-    .feature-grid li:nth-child(4n)::before { color: var(--violet); }
-    .feature-grid li:nth-child(5n)::before { color: var(--orange); }
+    .model-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
 
-    .model-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 24px;
-    }
-
-    .model-card {
-      padding: 18px;
+    .model-card,
+    .download-card,
+    .trainer-card {
+      padding: 19px;
       border: 1px solid var(--line);
-      border-radius: var(--radius);
+      border-radius: 12px;
       background: var(--panel);
     }
 
-    .model-card h3 {
+    .model-card h3,
+    .download-card h3,
+    .trainer-card h3 {
       margin: 0 0 8px;
-      color: #ffffff;
+      color: #fff;
       font-size: 1.06rem;
     }
 
-    .model-card p {
+    .model-card p,
+    .download-card p,
+    .trainer-card p {
+      margin: 0;
       color: var(--muted);
-      font-size: 0.96rem;
+      font-size: .95rem;
     }
 
-    .model-card.yolo { border-color: rgba(120,217,87,0.16); }
-    .model-card.owl { border-color: rgba(35,214,230,0.16); }
-    .model-card.dino { border-color: rgba(143,124,255,0.16); }
-    .model-card.lae { border-color: rgba(240,139,62,0.16); }
+    .model-card:nth-child(4n+1) { border-color: rgba(255,122,24,.2); }
+    .model-card:nth-child(4n+2) { border-color: rgba(101,215,122,.17); }
+    .model-card:nth-child(4n+3) { border-color: rgba(37,214,232,.17); }
+    .model-card:nth-child(4n+4) { border-color: rgba(154,130,255,.17); }
 
-    .code-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
+    .overview-image {
       margin-top: 24px;
+      padding: 8px;
+      border: 1px solid rgba(255,122,24,.24);
+      border-radius: 14px;
+      background: #090a0b;
     }
 
-    .code-card {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--panel);
-      overflow: hidden;
-    }
+    .overview-image img { display: block; width: 100%; border-radius: 9px; }
 
-    .code-card h3 {
-      margin: 0;
-      padding: 13px 16px;
-      border-bottom: 1px solid var(--line);
-      color: #ffffff;
-      font-size: 1rem;
-    }
-
-    .code-block {
-      margin: 0;
-      padding: 16px;
-      overflow-x: auto;
-      background: #0b0b0b;
-      color: #f2f2f2;
-      font-size: 0.95rem;
-      line-height: 1.55;
-    }
-
-    code {
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    }
-
-    .download-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 24px;
-    }
+    .download-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
 
     .download-card {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      min-height: 164px;
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--panel);
+      min-height: 178px;
     }
 
-    .download-card:nth-child(1) { border-color: rgba(120,217,87,0.18); }
-    .download-card:nth-child(2) { border-color: rgba(35,214,230,0.18); }
-    .download-card:nth-child(3) { border-color: rgba(240,139,62,0.16); }
-    .download-card:nth-child(4) { border-color: rgba(143,124,255,0.16); }
-    .download-card:nth-child(5) { border-color: rgba(255,255,255,0.14); }
-    .download-card:nth-child(6) { border-color: rgba(35,214,230,0.16); }
+    .download-card .button,
+    .trainer-card .button { width: fit-content; margin-top: 18px; }
 
-    .download-card h3 {
-      margin: 0 0 8px;
-      color: #ffffff;
-      font-size: 1.04rem;
-    }
-
-    .download-card p {
-      margin: 0 0 16px;
-      color: var(--muted);
-      font-size: 0.96rem;
-    }
-
-    .download-card .button {
-      width: fit-content;
-      min-height: 40px;
-      padding: 9px 14px;
-      font-size: 0.92rem;
-    }
-
-    .image-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 24px;
-    }
-
-    .image-grid img,
-    .wide-image img {
+    .install-command {
+      display: flex;
+      align-items: center;
+      gap: 10px;
       width: 100%;
-      height: auto;
-      display: block;
-      border-radius: var(--radius);
-      border: 1px solid var(--line-strong);
-      background: #111111;
+      margin-top: 18px;
+      padding: 9px 10px 9px 14px;
+      border: 1px solid rgba(37,214,232,.24);
+      border-radius: 10px;
+      background: #090a0b;
     }
 
-    .wide-image {
-      margin-top: 24px;
+    .install-command code {
+      flex: 1;
+      min-width: 0;
+      overflow-x: auto;
+      color: #f4f4f5;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: .94rem;
+      white-space: nowrap;
+      user-select: all;
     }
+
+    .copy-command {
+      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: rgba(255,255,255,.06);
+      color: #fff;
+      font: inherit;
+      font-size: .86rem;
+      font-weight: 780;
+      cursor: pointer;
+      transition: background .16s ease, border-color .16s ease;
+    }
+
+    .copy-command:hover {
+      border-color: rgba(37,214,232,.5);
+      background: rgba(37,214,232,.1);
+    }
+
+    .store-img {
+      display: block;
+      width: 200px;
+      max-width: 100%;
+      height: auto;
+      margin-top: 18px;
+    }
+
+    .image-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+
+    figure {
+      margin: 0;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      background: #0a0b0c;
+    }
+
+    figure img { display: block; width: 100%; height: auto; }
+    figcaption { padding: 11px 14px; color: var(--muted); font-size: .88rem; }
+
+    .trainer-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .trainer-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 210px; }
+    .trainer-card.yolo { border-color: rgba(101,215,122,.25); }
+    .trainer-card.rcnn { border-color: rgba(37,214,232,.25); }
+    .trainer-card.rf { border-color: rgba(154,130,255,.25); }
+
+    .publisher-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-top: 16px;
+      padding: 18px 20px;
+      border: 1px solid rgba(255,122,24,.24);
+      border-radius: 12px;
+      background: linear-gradient(90deg, rgba(255,122,24,.07), rgba(255,255,255,.015));
+    }
+
+    .publisher-box h3 { margin: 0 0 4px; }
+    .publisher-box p { margin: 0; color: var(--muted); }
 
     .doi-box {
-      display: inline-block;
+      display: inline-flex;
       margin-top: 8px;
-      padding: 14px 16px;
-      border: 1px solid rgba(35,214,230,0.2);
-      border-radius: var(--radius);
-      background: rgba(255,255,255,0.02);
-      color: #f0f0f0;
+      padding: 13px 16px;
+      border: 1px solid rgba(37,214,232,.2);
+      border-radius: 10px;
+      background: rgba(255,255,255,.02);
       font-weight: 760;
     }
 
-    .quiet-note {
+    .note {
       margin-top: 18px;
       padding: 14px 16px;
       border-left: 2px solid var(--orange);
-      border-radius: 0 8px 8px 0;
-      background: rgba(255,255,255,0.02);
-      color: #d5d5d5;
+      border-radius: 0 9px 9px 0;
+      background: rgba(255,255,255,.025);
+      color: #d5d5d7;
     }
 
     footer {
       padding: 24px 42px 28px;
-      border-top: 1px solid var(--line);
       color: var(--muted);
-      font-size: 0.94rem;
-      background: rgba(255,255,255,0.01);
+      font-size: .92rem;
+      background: rgba(255,255,255,.01);
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 1050px) {
       .hero-grid,
       .section-head,
-      .download-grid,
-      .feature-grid,
       .model-grid,
-      .code-grid,
-      .image-grid {
-        grid-template-columns: 1fr;
-      }
+      .trainer-grid { grid-template-columns: 1fr; }
+      .hero-grid { gap: 28px; }
+      .hero-panel { max-width: 900px; }
+    }
 
-      .page {
-        width: min(100% - 18px, var(--maxw));
-        padding-top: 12px;
-      }
-
+    @media (max-width: 760px) {
+      .page { width: min(100% - 16px, var(--maxw)); padding-top: 8px; }
+      .topbar { position: static; flex-direction: column; align-items: flex-start; }
+      .nav { justify-content: flex-start; }
       .hero,
       .section,
-      footer {
-        padding-left: 22px;
-        padding-right: 22px;
-      }
-
-      .topbar {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-      }
-
-      .actions,
+      footer { padding-left: 20px; padding-right: 20px; }
+      .edition-strip { grid-template-columns: 1fr; padding-left: 20px; padding-right: 20px; }
+      .feature-grid,
+      .download-grid,
+      .image-grid { grid-template-columns: 1fr; }
       .button,
-      .download-card .button {
-        width: 100%;
-      }
-
-      .download-card {
-        min-height: auto;
-      }
+      .download-card .button,
+      .trainer-card .button { width: 100%; }
+      .publisher-box { flex-direction: column; align-items: stretch; }
+      h1 { font-size: clamp(3.8rem, 22vw, 6.2rem); }
     }
   </style>
 </head>
@@ -540,357 +543,324 @@
 <body>
   <div class="page">
     <main class="frame">
-      <div class="topbar">
-        <strong>Mustatil</strong>
-        <span>GIS AI Vision Workspace · YOLO Training · Detection · AI Pipelines</span>
-      </div>
+      <header class="topbar">
+        <a class="brand" href="#top"><span class="brand-dot"></span>Mustatil 6</a>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="#features">Features</a>
+          <a href="#models">AI models</a>
+          <a href="#downloads">Downloads</a>
+          <a href="#screenshots">Screenshots</a>
+          <a href="#trainers">Trainers</a>
+        </nav>
+      </header>
 
-      <section class="hero">
+      <section class="hero" id="top">
         <div class="badge-row" aria-label="Project badges">
-          <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-">
+          <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-" target="_blank" rel="noopener">
             <img src="https://img.shields.io/badge/GitHub-Repository-black" alt="GitHub Repository">
           </a>
-          <a href="https://pypi.org/project/mustatil/">
+          <a href="https://pypi.org/project/mustatil/" target="_blank" rel="noopener">
             <img src="https://img.shields.io/pypi/v/mustatil?label=PyPI" alt="PyPI version">
           </a>
-          <a href="https://snapcraft.io/mustatil" aria-label="Get Mustatil from the Snap Store">
-            <img src="https://snapcraft.io/en/dark/install.svg" alt="Get it from the Snap Store">
+          <a href="https://snapcraft.io/mustatil" target="_blank" rel="noopener">
+            <img src="https://snapcraft.io/en/dark/install.svg" alt="Get Mustatil from the Snap Store">
           </a>
-          <a href="https://get.microsoft.com/installer/download/9PN11ZK9QL42?referrer=appbadge" target="_self" aria-label="Get Mustatil from the Microsoft Store">
-            <img class="ms-store-badge" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft">
+          <a href="https://get.microsoft.com/installer/download/9PN11ZK9QL42?referrer=appbadge" target="_self" aria-label="Get Mustatil from Microsoft">
+            <img class="store-badge" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft">
           </a>
-          <a href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">
+          <a href="https://tarekwasfy01.itch.io/mustatil-qt-workspace" target="_blank" rel="noopener">
             <img src="https://img.shields.io/badge/Download-itch.io-red" alt="Download on itch.io">
           </a>
-          <a href="https://doi.org/10.5281/zenodo.20481110">
+          <a href="https://doi.org/10.5281/zenodo.20481110" target="_blank" rel="noopener">
             <img src="https://img.shields.io/badge/Zenodo-DOI%2010.5281%2Fzenodo.20481110-blue?style=flat&logo=zenodo" alt="Zenodo DOI">
           </a>
-          <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/blob/main/LICENSE">
+          <a href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/blob/main/LICENSE" target="_blank" rel="noopener">
             <img src="https://img.shields.io/badge/License-LGPL%20v3-blue" alt="License LGPL v3">
-          </a>
-          <a href="https://www.python.org/downloads/">
-            <img src="https://img.shields.io/badge/Python-3.11%2B-brightgreen" alt="Python 3.11+">
           </a>
         </div>
 
         <div class="hero-grid">
           <div>
-            <div class="eyebrow">GIS-level AI vision workspace</div>
-            <h1>Mustatil</h1>
+            <div class="eyebrow">AI-powered geospatial analysis</div>
+            <h1>Mustatil <span>6</span></h1>
             <p class="subtitle">
-              <strong>Annotation, YOLO training, large-scale detection, satellite-map analysis, and visual pipeline building</strong> in one desktop application — designed for images and map areas too large for conventional computer-vision tools.
+              <strong>A complete desktop workspace for large geospatial imagery.</strong>
+              Detect, annotate, train, segment, review, and export results without splitting your workflow across separate applications.
             </p>
 
-            <div class="highlight-row">
-              <span class="pill green">YOLO training</span>
-              <span class="pill">GIS detection</span>
-              <span class="pill violet">AI pipelines</span>
-              <span class="pill orange">Satellite maps</span>
+            <div class="pills">
+              <span class="pill green">GeoTIFF &amp; BigTIFF</span>
+              <span class="pill cyan">YOLO &amp; Faster R-CNN</span>
+              <span class="pill violet">SAM2 segmentation</span>
+              <span class="pill">AI pipelines</span>
             </div>
 
-            <div class="actions" aria-label="Main links">
-              <a class="button green" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-">
-                GitHub Repository
-              </a>
-              <a class="button secondary" href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">
-                Download on itch.io
-              </a>
-              <a class="button secondary violet" href="https://pypi.org/project/mustatil/">
-                PyPI Package
-              </a>
-              <a class="button secondary orange" href="https://doi.org/10.5281/zenodo.20481110">
-                Zenodo DOI
-              </a>
+            <div class="actions">
+              <a class="button orange" href="https://get.microsoft.com/installer/download/9PN11ZK9QL42?referrer=appbadge" target="_self">Get Mustatil 6</a>
+              <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">Download Mustatil 5.6 Free</a>
+              <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-" target="_blank" rel="noopener">GitHub Repository</a>
             </div>
           </div>
 
           <div class="hero-panel">
-            <img
-              width="1280"
-              height="720"
-              alt="Mustatil workspace screenshot"
-              src="https://github.com/user-attachments/assets/e869cd6a-3c36-42e1-b587-65dfc3edcbbb">
+            <img src="assets/mustatil-6-hero.webp" width="1672" height="941" alt="Mustatil 6 geospatial analysis workspace">
           </div>
         </div>
       </section>
 
+      <div class="edition-strip" aria-label="Mustatil editions">
+        <article class="edition-card free">
+          <span class="label">Free forever</span>
+          <h3>Mustatil 5.6 remains free forever</h3>
+          <p>The complete Mustatil 5.6 release stays available as a permanent free edition.</p>
+        </article>
+        <article class="edition-card paid">
+          <span class="label">Current generation</span>
+          <h3>Mustatil 6 is available for purchase</h3>
+          <p>Get the newest generation through the Microsoft Store and support continued development.</p>
+        </article>
+      </div>
+
       <section class="section" id="about">
         <div class="section-head">
-          <h2>About</h2>
-          <p class="section-note">
-            A desktop workspace for dataset creation, model training, geospatial inference, map-based review, and graphical AI pipelines.
-          </p>
+          <h2>One workspace from detection to review</h2>
+          <p class="section-note">Mustatil 6 combines large-raster inference, satellite imagery workflows, video analysis, annotation, training, segmentation, and GIS-ready export.</p>
         </div>
-
         <p>
-          Mustatil is an integrated GIS-level AI vision workspace for annotation, YOLO training, large-scale detection, satellite-map analysis, and visual pipeline building. It combines dataset creation, model training, geospatial inference, map-based review, and graphical AI pipelines in one desktop application.
+          Mustatil is built for projects where conventional computer-vision tools become impractical: huge GeoTIFF and BigTIFF files, satellite mosaics, remote-sensing imagery, archaeology, geospatial surveys, and long-running tiled detection jobs. The workspace keeps model selection, inference, annotation, quality review, and export together in one desktop interface.
         </p>
-
-        <div class="quiet-note">
-          Mustatil means rectangle — a reference to both archaeological mustatils and the rectangular detection boxes used in AI object detection.
-        </div>
+        <div class="note">Mustatil means rectangle — a reference to both archaeological mustatils and the rectangular detection boxes used in AI object detection.</div>
       </section>
 
       <section class="section" id="features">
         <div class="section-head">
-          <h2>Core features</h2>
-          <p class="section-note">
-            Practical AI and GIS tools for very large images, satellite maps, annotations, training, and export.
-          </p>
+          <h2>Mustatil 6 features</h2>
+          <p class="section-note">A broader workspace for geospatial AI, image intelligence, dataset preparation, model development, and operational review.</p>
         </div>
-
         <ul class="feature-grid">
-          <li>GIS-level object detection workspace</li>
-          <li>Large-image and satellite-map detection</li>
-          <li>Annotation workflow with classes and training data</li>
-          <li>YOLO, RF-DETR, R-CNN, Mask R-CNN, U-Net, SAM2, ADAF and DINO workflows</li>
-          <li>GeoPackage and GIS export workflows</li>
-          <li>Map-based visual review and detection correction</li>
-          <li>Graphical AI pipeline builder</li>
-          <li>Desktop installer workflow for non-Python users</li>
+          <li>Object detection in huge GeoTIFF and BigTIFF datasets</li>
+          <li>Memory-conscious tiled processing with overlap control</li>
+          <li>Satellite imagery detection and remote-sensing workflows</li>
+          <li>YOLO, Faster R-CNN, RF-DETR, Mask R-CNN, U-Net and DINO support</li>
+          <li>Video detection, annotation, timeline review, and export</li>
+          <li>SAM2-assisted segmentation from boxes and annotations</li>
+          <li>Integrated annotation, class management, and dataset creation</li>
+          <li>Graphical AI pipeline workflows and model chaining</li>
+          <li>Detection filtering, scoring, and FormTrainer integration</li>
+          <li>Exports to GeoJSON, GeoPackage, CSV, images, masks, and datasets</li>
         </ul>
+
+        <div class="overview-image">
+          <img src="assets/mustatil-6-overview.webp" width="1672" height="941" alt="Overview of Mustatil 6 detection, video, and SAM2 tools">
+        </div>
       </section>
 
       <section class="section" id="models">
         <div class="section-head">
           <h2>AI model support</h2>
-          <p class="section-note">
-            Mustatil is built as a broad AI vision workspace: YOLO training, transformer-based detection, classical detection networks, segmentation models, prompt-based AI tools, and GIS-ready inference workflows.
-          </p>
+          <p class="section-note">Use fast detectors, proposal-based networks, transformer architectures, semantic segmentation, interactive masks, and prompt-driven workflows.</p>
         </div>
 
         <div class="model-grid">
-          <article class="model-card yolo">
-            <h3>YOLO / Ultralytics models</h3>
-            <p>Train and run YOLO models for object detection, large images, satellite imagery, tiled inference, annotation review, and GIS export workflows. Suitable for YOLOv8, YOLOv11, and other Ultralytics-compatible models.</p>
-          </article>
-
-          <article class="model-card yolo">
-            <h3>RF-DETR</h3>
-            <p>DETR-style object detection workflow for modern transformer-based detection. Useful as an alternative to YOLO for project-based datasets and advanced object detection experiments.</p>
-          </article>
-
-          <article class="model-card yolo">
-            <h3>Faster R-CNN / R-CNN</h3>
-            <p>Classical region-based object detection support for workflows where proposal-based detection is useful, especially as a comparison or alternative to YOLO-style detection.</p>
-          </article>
-
-          <article class="model-card yolo">
-            <h3>Mask R-CNN</h3>
-            <p>Instance-segmentation workflow for object masks, not only rectangular bounding boxes. Useful where object outlines or separated instances are more important than simple boxes.</p>
-          </article>
-
-          <article class="model-card owl">
-            <h3>U-Net</h3>
-            <p>Semantic-segmentation workflow for pixel-level masks, raster-style classification, and image-to-mask tasks. Useful for remote sensing and map/image segmentation workflows.</p>
-          </article>
-
-          <article class="model-card owl">
-            <h3>SAM2</h3>
-            <p>Segment Anything 2 workflow for interactive and AI-assisted segmentation. Useful for mask creation, object separation, annotation assistance, and segmentation-based review.</p>
-          </article>
-
-          <article class="model-card owl">
-            <h3>ADAF</h3>
-            <p>Additional AI detection/filtering workflow inside the Mustatil ecosystem for advanced detection experiments, filtering, and model-assisted review.</p>
-          </article>
-
-          <article class="model-card owl">
-            <h3>Google OWL-ViT / OWLv2</h3>
-            <p>Experimental open-vocabulary object detection from text prompts. Useful for searching objects without training a fixed class-specific model first.</p>
-          </article>
-
-          <article class="model-card dino">
-            <h3>Grounding DINO</h3>
-            <p>Text-guided detection for flexible object search and prompt-based localization. Extends Mustatil beyond fixed-label YOLO workflows.</p>
-          </article>
-
-          <article class="model-card dino">
-            <h3>LAE-DINO</h3>
-            <p>DINO-based detection and training workflow with project-based dataset creation, model testing, and training support.</p>
-          </article>
-
-          <article class="model-card dino">
-            <h3>Detect Anything / LocateAnything</h3>
-            <p>Promptable detection workflow for flexible object localization. Designed as an experimental AI vision extension beside the regular YOLO/GIS workflow.</p>
-          </article>
-
-          <article class="model-card lae">
-            <h3>Universal AI trainer workflow</h3>
-            <p>Mustatil is designed to combine annotation, class management, dataset preparation, training, detection, review, and export in one desktop workflow instead of separating these steps across many tools.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="section" id="install">
-        <div class="section-head">
-          <h2>Install</h2>
-          <p class="section-note">
-            Use the installer for a guided desktop setup, or install directly through Python / Conda.
-          </p>
-        </div>
-
-        <div class="code-grid">
-          <article class="code-card">
-            <h3>Python package</h3>
-            <pre class="code-block"><code>py -m pip install mustatil
-mustatil</code></pre>
-          </article>
-
-          <article class="code-card">
-            <h3>Conda</h3>
-            <pre class="code-block"><code>conda install mustatil::mustatil</code></pre>
-          </article>
-        </div>
-
-        <div class="quiet-note">
-          The Windows installer downloads Python and all dependencies, then starts the GUI. The first launch can take some time and is intended as a simple option for users who do not normally work with Python.
+          <article class="model-card"><h3>YOLO / Ultralytics</h3><p>Tiled detection, training, class filtering, review, model comparison, and GIS export for Ultralytics-compatible models.</p></article>
+          <article class="model-card"><h3>Faster R-CNN</h3><p>Proposal-based detection with selectable backbones and large-image tiled inference.</p></article>
+          <article class="model-card"><h3>RF-DETR</h3><p>Modern transformer-based object detection as an alternative to conventional one-stage detectors.</p></article>
+          <article class="model-card"><h3>Mask R-CNN</h3><p>Instance segmentation for projects that require object masks in addition to bounding boxes.</p></article>
+          <article class="model-card"><h3>U-Net</h3><p>Pixel-level semantic segmentation for remote sensing, raster classification, and image-to-mask workflows.</p></article>
+          <article class="model-card"><h3>SAM2</h3><p>AI-assisted segmentation using annotation boxes as prompts, with single-image and batch processing.</p></article>
+          <article class="model-card"><h3>Grounding DINO</h3><p>Text-guided detection and flexible prompt-based localization beyond fixed training classes.</p></article>
+          <article class="model-card"><h3>OWL-ViT / OWLv2</h3><p>Experimental open-vocabulary detection for locating concepts from text prompts.</p></article>
+          <article class="model-card"><h3>LAE-DINO and advanced workflows</h3><p>Project-based training, detection, experimentation, filtering, and model-assisted review.</p></article>
         </div>
       </section>
 
       <section class="section" id="downloads">
         <div class="section-head">
-          <h2>Downloads</h2>
-          <p class="section-note">
-            Latest Mustatil 5.6 installers and project links.
-          </p>
+          <h2>Downloads and editions</h2>
+          <p class="section-note">Purchase Mustatil 6 from Microsoft or keep using the permanent free Mustatil 5.6 release.</p>
         </div>
 
         <div class="download-grid">
           <article class="download-card">
             <div>
-              <h3>Windows installer</h3>
-              <p>Mustatil 5.6 setup .exe for Windows.</p>
+              <h3>Mustatil 6 — Microsoft Store</h3>
+              <p>The current generation of Mustatil. Available for purchase from the Microsoft Store.</p>
             </div>
-            <a class="button green" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">
-              Download Windows EXE
+            <a href="https://get.microsoft.com/installer/download/9PN11ZK9QL42?referrer=appbadge" target="_self" aria-label="Get Mustatil 6 from Microsoft">
+              <img class="store-img" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft">
             </a>
           </article>
 
           <article class="download-card">
             <div>
-              <h3>Microsoft Store</h3>
-              <p>Install Mustatil directly from the Microsoft Store.</p>
+              <h3>Mustatil 5.6 — Free forever</h3>
+              <p>The complete Windows desktop installer remains permanently free.</p>
             </div>
-            <a href="https://get.microsoft.com/installer/download/9PN11ZK9QL42?referrer=appbadge" target="_self" aria-label="Get Mustatil from the Microsoft Store">
-              <img alt="Get it from Microsoft" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" style="width: 200px; max-width: 100%; height: auto; display: block;">
-            </a>
+            <a class="button" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Setup.exe">Download Windows EXE</a>
           </article>
 
           <article class="download-card">
             <div>
-              <h3>macOS installer</h3>
-              <p>Mustatil 5.6 Apple macOS .pkg installer.</p>
+              <h3>Mustatil 5.6 for macOS</h3>
+              <p>Free Apple macOS package from the Mustatil 5.6 release.</p>
             </div>
-            <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_macOS.pkg">
-              Download macOS PKG
-            </a>
+            <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_macOS.pkg">Download macOS PKG</a>
           </article>
 
           <article class="download-card">
             <div>
-              <h3>Linux installer</h3>
-              <p>Mustatil 5.6 Linux .deb installer.</p>
+              <h3>Mustatil 5.6 for Linux</h3>
+              <p>Free Debian package from the Mustatil 5.6 release.</p>
             </div>
-            <a class="button secondary orange" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Linux.deb">
-              Download Linux DEB
-            </a>
-          </article>
-
-
-          <article class="download-card">
-            <div>
-              <h3>Snap Store</h3>
-              <p>Install Mustatil directly from the Snap Store.</p>
-            </div>
-            <a href="https://snapcraft.io/mustatil" aria-label="Get Mustatil from the Snap Store">
-              <img alt="Get it from the Snap Store" src="https://snapcraft.io/en/dark/install.svg" style="width: 200px; max-width: 100%; height: auto; display: block;">
-            </a>
+            <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases/download/Mustatil-5.6/Mustatil_5.6_Linux.deb">Download Linux DEB</a>
           </article>
 
           <article class="download-card">
             <div>
-              <h3>itch.io</h3>
-              <p>Alternative download page and project presentation.</p>
+              <h3>Python package</h3>
+              <p>Copy and paste this command into a terminal to install Mustatil from PyPI.</p>
+              <div class="install-command" aria-label="Mustatil pip installation command">
+                <code id="pip-install-command">pip install mustatil</code>
+                <button class="copy-command" type="button" data-copy="pip-install-command" aria-label="Copy pip install command">Copy</button>
+              </div>
             </div>
-            <a class="button secondary violet" href="https://tarekwasfy01.itch.io/mustatil-qt-workspace">
-              Open itch.io
-            </a>
+            <a class="button secondary" href="https://pypi.org/project/mustatil/" target="_blank" rel="noopener">Open PyPI</a>
           </article>
 
           <article class="download-card">
             <div>
-              <h3>Project websites</h3>
-              <p>Main Mustatil websites.</p>
+              <h3>Project links</h3>
+              <p>Source code, releases, documentation, and alternative downloads.</p>
             </div>
             <div class="actions">
-              <a class="button secondary" href="https://mustatil.de">mustatil.de</a>
-              <a class="button secondary" href="https://mustatil-ai.com">mustatil-ai.com</a>
+              <a class="button secondary" href="https://mustatil.de" target="_blank" rel="noopener">mustatil.de</a>
+              <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases" target="_blank" rel="noopener">GitHub Releases</a>
+              <a class="button secondary" href="https://tarekwasfy01.itch.io/mustatil-qt-workspace" target="_blank" rel="noopener">itch.io</a>
             </div>
-          </article>
-
-          <article class="download-card">
-            <div>
-              <h3>GitHub releases</h3>
-              <p>Release files, installer history, and source code.</p>
-            </div>
-            <a class="button secondary" href="https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-/releases">
-              Open Releases
-            </a>
           </article>
         </div>
       </section>
 
       <section class="section" id="screenshots">
         <div class="section-head">
-          <h2>Screenshots</h2>
-          <p class="section-note">
-            Mustatil workspace views for detection, annotation, training, map analysis, and AI pipelines.
-          </p>
+          <h2>Mustatil 6 screenshots</h2>
+          <p class="section-note">Real workspace views showing large-raster detection, Faster R-CNN inference, video intelligence, and SAM2 segmentation.</p>
         </div>
 
         <div class="image-grid">
-          <img width="1280" height="720" alt="Mustatil screenshot 1" src="https://github.com/user-attachments/assets/e869cd6a-3c36-42e1-b587-65dfc3edcbbb">
-          <img width="1280" height="720" alt="Mustatil screenshot 2" src="https://github.com/user-attachments/assets/fe9d1958-78fb-498c-96bd-636aae9ed342">
-          <img width="1280" height="720" alt="Mustatil screenshot 3" src="https://github.com/user-attachments/assets/7e9099d2-20c1-43e7-b5d9-fb0f05e61ff9">
-          <img width="1280" height="720" alt="Mustatil screenshot 4" src="https://github.com/user-attachments/assets/03291052-c523-4aee-8007-d5c964e9115b">
+          <figure>
+            <img src="assets/large-geotiff-detection.webp" width="2048" height="1112" loading="lazy" alt="Mustatil 6 tiled YOLO detection on a large satellite mosaic">
+            <figcaption>Large GeoTIFF and BigTIFF tiled detection workspace.</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/faster-rcnn-detection.webp" width="2048" height="1113" loading="lazy" alt="Mustatil 6 Faster R-CNN detection on satellite imagery">
+            <figcaption>Faster R-CNN detection with model and backbone controls.</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/video-detection-annotation.webp" width="2048" height="1113" loading="lazy" alt="Mustatil 6 video detection and annotation interface">
+            <figcaption>Video detection, frame annotation, timeline review, and dataset export.</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/sam2-segmentation.webp" width="2048" height="1112" loading="lazy" alt="Mustatil 6 SAM2 segmentation interface">
+            <figcaption>SAM2-assisted segmentation using project annotations as prompts.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="trainers">
+        <div class="section-head">
+          <h2>Standalone AI trainers</h2>
+          <p class="section-note">Dedicated Microsoft Store applications are also available for focused training workflows outside the complete Mustatil workspace.</p>
+        </div>
+
+        <div class="trainer-grid">
+          <article class="trainer-card yolo">
+            <div>
+              <h3>YOLO Trainer</h3>
+              <p>Dedicated training application for creating and managing YOLO object-detection models.</p>
+            </div>
+            <a href="https://get.microsoft.com/installer/download/9pkc4sbbbdj8?referrer=appbadge" target="_self" aria-label="Get YOLO Trainer from Microsoft">
+              <img class="store-img" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get YOLO Trainer from Microsoft">
+            </a>
+          </article>
+
+          <article class="trainer-card rcnn">
+            <div>
+              <h3>R-CNN Trainer</h3>
+              <p>Standalone application for region-based object-detection training and experimentation.</p>
+            </div>
+            <a href="https://get.microsoft.com/installer/download/9n75fgf4d1lv?referrer=appbadge" target="_self" aria-label="Get R-CNN Trainer from Microsoft">
+              <img class="store-img" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get R-CNN Trainer from Microsoft">
+            </a>
+          </article>
+
+          <article class="trainer-card rf">
+            <div>
+              <h3>RF-DETR Trainer</h3>
+              <p>Focused RF-DETR model-training workflow for transformer-based object detection.</p>
+            </div>
+            <a href="https://get.microsoft.com/installer/download/9mz7k83f2cd0?referrer=appbadge" target="_self" aria-label="Get RF-DETR Trainer from Microsoft">
+              <img class="store-img" src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get RF-DETR Trainer from Microsoft">
+            </a>
+          </article>
+        </div>
+
+        <div class="publisher-box">
+          <div>
+            <h3>More applications by Tarek Wasfy</h3>
+            <p>Browse the complete Microsoft Store publisher catalog.</p>
+          </div>
+          <a class="button orange" href="https://apps.microsoft.com/search/publisher?name=Tarek+Wasfy&amp;hl=en-EN&amp;gl=EN" target="_blank" rel="noopener">Open Microsoft Store Publisher Page</a>
         </div>
       </section>
 
       <section class="section" id="archive">
         <div class="section-head">
           <h2>Scientific archive</h2>
-          <p class="section-note">
-            Permanent Zenodo DOI and citation reference.
-          </p>
+          <p class="section-note">Permanent Zenodo reference for citation and archival access.</p>
         </div>
-
-        <a class="doi-box" href="https://doi.org/10.5281/zenodo.20481110">
-          DOI: https://doi.org/10.5281/zenodo.20481110
-        </a>
+        <a class="doi-box" href="https://doi.org/10.5281/zenodo.20481110" target="_blank" rel="noopener">DOI: 10.5281/zenodo.20481110</a>
       </section>
 
       <section class="section" id="notes">
         <div class="section-head">
-          <h2>Notes</h2>
-          <p class="section-note">
-            Additional GIS compatibility and project information.
-          </p>
+          <h2>Additional information</h2>
+          <p class="section-note">GIS compatibility and project notes.</p>
         </div>
-
-        <p>
-          Additionally, there is a GeoPackage converter for QGIS if there is a problem with files. Normally, the EPSG code for a layer can be changed directly in QGIS.
-        </p>
-
-        <div class="quiet-note">
-          The program was written using AI.
-        </div>
+        <p>GeoPackage results can be opened in QGIS and other GIS applications. Layer CRS and EPSG settings can be adjusted directly in the GIS software when required.</p>
+        <div class="note">The program was written using AI.</div>
       </section>
 
-      <footer>
-        Mustatil by Tarek Wasfy and AI.
-      </footer>
+      <footer>Mustatil by Tarek Wasfy and AI.</footer>
     </main>
   </div>
+
+  <script>
+    document.querySelectorAll('[data-copy]').forEach(function (button) {
+      button.addEventListener('click', async function () {
+        const target = document.getElementById(button.dataset.copy);
+        if (!target) return;
+
+        const command = target.textContent.trim();
+        const originalLabel = button.textContent;
+
+        try {
+          await navigator.clipboard.writeText(command);
+          button.textContent = 'Copied';
+        } catch (error) {
+          const range = document.createRange();
+          range.selectNodeContents(target);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          button.textContent = 'Select & copy';
+        }
+
+        window.setTimeout(function () {
+          button.textContent = originalLabel;
+        }, 1800);
+      });
+    });
+  </script>
 </body>
 </html>

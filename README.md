@@ -11,7 +11,6 @@ Mustatil 6 is now available in the Microsoft Store
 The Mustatil 6 release might be in a few days, I am working on getting it published in the Microsoft Store again, as an update. Right now it is in certification. But honestly I do think that the Python only 5.6 version might be the better one. Version 5.6 will stay free and is still the recommended stable version. Version 6 will be under development and hopefully will become the better version over time.
 I have chosen to publish in the Microsoft Store, because there it gets licenced for free if its packaged as a MSIX. This gives you a licenced and signed version, wich is proofen to be unharmfull and virus free.
 
-## My Tip for you is to aquire Mustatil from the Microsoft Store as long as it is free, then you will get the update for free aswell. 
     Update Notes:  - New C++ Gui with dark look (there is a setting for bright mode)
                    - Unfortuanatly ADAF did not make it into the new version
                    - Standard DINO Model is included

@@ -1,5 +1,4 @@
 # Update 15.07.2026
-I am sorry but because of the version number the installation does still install the old Version!
 
 Mustatil 6 is now available in the Microsoft Store and the first ten viewers do get it for free!
 

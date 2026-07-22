@@ -6,7 +6,7 @@ CODE: T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ
 
 <a href="http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ">http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ</a>
 
-https://appagg.com/windows/utilitiesandtools/mustatil-43445850.html?hl=de#score
+
 
 <a href="https://apps.microsoft.com/detail/9PN11ZK9QL42?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
 	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>

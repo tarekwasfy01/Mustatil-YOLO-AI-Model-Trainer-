@@ -6,6 +6,13 @@ CODE: T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ
 
 <a href="http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ">http://go.microsoft.com/fwlink/?LinkId=532540&mstoken=T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ</a>
 
+<!-- AppAgg Score Badge Block -->
+<div style="margin: 20px 0; text-align: center;">
+  <a href="https://appagg.com" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background-color: #2196F3; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background-color 0.2s ease-in-out;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-bottom: 1px;"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+    <span>Mustatil auf AppAgg ansehen</span>
+  </a>
+</div>
 
 
 <a href="https://apps.microsoft.com/detail/9PN11ZK9QL42?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">

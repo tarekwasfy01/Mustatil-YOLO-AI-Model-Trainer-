@@ -110,10 +110,111 @@
             }
         }
     </style>
+    <style>
+        :root {
+            --muted: #a8a9ad;
+            --line: rgba(255, 255, 255, .09);
+            --orange: #ff7a18;
+            --orange-soft: #ff9d4a;
+        }
+
+        body {
+            color: #f5f5f5;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background:
+                radial-gradient(circle at 8% 0%, rgba(255, 122, 24, .11), transparent 30rem),
+                radial-gradient(circle at 92% 15%, rgba(255, 122, 24, .055), transparent 34rem),
+                linear-gradient(180deg, #070708 0%, #0b0c0e 100%);
+        }
+
+        .page {
+            width: min(1000px, calc(100% - 28px));
+            padding: 24px 0 46px;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 13px 24px;
+            border: 1px solid var(--line);
+            border-bottom: 0;
+            border-radius: 18px 18px 0 0;
+            background: rgba(12, 13, 15, .9);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            font-size: .94rem;
+            font-weight: 900;
+            letter-spacing: .04em;
+        }
+
+        .brand-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--orange);
+            box-shadow: 0 0 18px rgba(255, 122, 24, .75);
+        }
+
+        .topbar-link { color: var(--muted); font-size: .84rem; font-weight: 700; }
+        .topbar-link:hover { color: #fff; }
+
+        .legal-card {
+            padding: clamp(26px, 6vw, 56px);
+            border-color: var(--line);
+            border-radius: 0 0 18px 18px;
+            background: linear-gradient(180deg, #101113 0%, #0d0e10 100%);
+            box-shadow: 0 22px 75px rgba(0, 0, 0, .46);
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: clamp(2.4rem, 6vw, 4.7rem);
+            line-height: 1;
+            letter-spacing: -.055em;
+        }
+
+        h1::after { content: "."; color: var(--orange); }
+        h2 { margin-top: 38px; font-size: 1.28rem; }
+        p, address { color: #d7d7da; }
+        .subtitle, .site-footer { color: var(--muted); }
+        a { color: var(--orange-soft); }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 44px;
+            padding: 10px 17px;
+            border: 1px solid var(--orange);
+            color: #111;
+            background: var(--orange);
+            font-weight: 860;
+        }
+
+        .back-link:hover { background: var(--orange-soft); text-decoration: none; }
+        .site-footer { margin-top: 42px; padding-top: 22px; border-color: var(--line); }
+
+        @media (max-width: 600px) {
+            .page { width: min(100% - 20px, 1000px); padding: 10px 0 24px; }
+            .topbar { padding: 13px 16px; border-radius: 12px 12px 0 0; }
+            .legal-card { padding: 26px 20px; border-radius: 0 0 12px 12px; }
+        }
+    </style>
 </head>
 
 <body>
     <main class="page">
+        <header class="topbar">
+            <a class="brand" href="index.html"><span class="brand-dot" aria-hidden="true"></span>Mustatil 6</a>
+            <a class="topbar-link" href="index.html">Zur Startseite</a>
+        </header>
         <article class="legal-card">
             <h1>Impressum</h1>
             <p class="subtitle">Anbieterkennzeichnung gemäß § 5 DDG</p>

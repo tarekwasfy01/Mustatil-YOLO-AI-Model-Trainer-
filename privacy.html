@@ -2,6 +2,76 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Mustatil legal footer -->
+<style>
+    .mustatil-legal-footer {
+        width: 100%;
+        margin-top: 60px;
+        padding: 24px 20px;
+        text-align: center;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #9badbd;
+        background: #0b1117;
+        border-top: 1px solid #263544;
+    }
+
+    .mustatil-legal-footer a {
+        margin: 0 10px;
+        color: #55c7ff;
+        text-decoration: none;
+    }
+
+    .mustatil-legal-footer a:hover,
+    .mustatil-legal-footer a:focus {
+        text-decoration: underline;
+    }
+
+    .mustatil-legal-footer-separator {
+        color: #607080;
+    }
+
+    @media (max-width: 500px) {
+        .mustatil-legal-footer a {
+            display: inline-block;
+            margin: 5px 7px;
+        }
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (document.querySelector(".mustatil-legal-footer")) {
+            return;
+        }
+
+        const footer = document.createElement("footer");
+        footer.className = "mustatil-legal-footer";
+
+        footer.innerHTML = `
+            <div>
+                &copy; ${new Date().getFullYear()} Tarek Wasfy · Mustatil
+            </div>
+
+            <div>
+                <a href="privacy.html">Privacy Policy</a>
+
+                <span
+                    class="mustatil-legal-footer-separator"
+                    aria-hidden="true"
+                >
+                    |
+                </span>
+
+                <a href="imprint.html">Impressum</a>
+            </div>
+        `;
+
+        document.body.appendChild(footer);
+    });
+</script>
+<!-- End Mustatil legal footer -->
     <meta charset="UTF-8">
 
     <meta

@@ -9,6 +9,498 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- Standalone build: screenshots and Microsoft Store badges are embedded directly in this file. -->
 <html lang="en">
 <head>
+```html
+<!-- =========================================================
+     MICROSOFT UET + CONSENT BANNER
+     UET Tag ID: 187262857
+
+     Paste this entire block directly after the opening <head> tag.
+========================================================= -->
+
+<style>
+    #uet-consent-banner,
+    #uet-privacy-settings-button {
+        font-family: "Segoe UI", Arial, sans-serif;
+        box-sizing: border-box;
+    }
+
+    #uet-consent-banner *,
+    #uet-privacy-settings-button {
+        box-sizing: border-box;
+    }
+
+    #uet-consent-banner {
+        position: fixed;
+        z-index: 2147483647;
+        right: 20px;
+        bottom: 20px;
+        left: 20px;
+        display: none;
+    }
+
+    .uet-consent-panel {
+        width: 100%;
+        max-width: 1050px;
+        margin: 0 auto;
+        padding: 22px;
+        color: #202124;
+        background: #ffffff;
+        border: 1px solid #d4d8dd;
+        border-radius: 14px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+    }
+
+    .uet-consent-layout {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 28px;
+    }
+
+    .uet-consent-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .uet-consent-title {
+        display: block;
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.3;
+    }
+
+    .uet-consent-description {
+        margin: 0 0 9px;
+        font-size: 14px;
+        line-height: 1.55;
+    }
+
+    .uet-consent-link {
+        color: #0067b8;
+        font-size: 14px;
+        text-decoration: underline;
+    }
+
+    .uet-consent-actions {
+        display: flex;
+        flex-shrink: 0;
+        gap: 10px;
+    }
+
+    .uet-consent-button {
+        min-width: 125px;
+        padding: 11px 18px;
+        border: 1px solid #767676;
+        border-radius: 8px;
+        color: #202124;
+        background: #ffffff;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .uet-consent-button:hover {
+        background: #f1f3f5;
+    }
+
+    .uet-consent-button:focus-visible {
+        outline: 3px solid rgba(0, 103, 184, 0.35);
+        outline-offset: 2px;
+    }
+
+    #uet-consent-accept {
+        color: #ffffff;
+        background: #0067b8;
+        border-color: #0067b8;
+    }
+
+    #uet-consent-accept:hover {
+        background: #005a9e;
+    }
+
+    #uet-privacy-settings-button {
+        position: fixed;
+        z-index: 2147483646;
+        right: 16px;
+        bottom: 16px;
+        display: none;
+        padding: 9px 13px;
+        border: 1px solid #a5a5a5;
+        border-radius: 8px;
+        color: #202124;
+        background: #ffffff;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        font: 13px "Segoe UI", Arial, sans-serif;
+        cursor: pointer;
+    }
+
+    #uet-privacy-settings-button:hover {
+        background: #f1f3f5;
+    }
+
+    #uet-privacy-settings-button:focus-visible {
+        outline: 3px solid rgba(0, 103, 184, 0.35);
+        outline-offset: 2px;
+    }
+
+    @media (max-width: 720px) {
+        #uet-consent-banner {
+            right: 10px;
+            bottom: 10px;
+            left: 10px;
+        }
+
+        .uet-consent-panel {
+            padding: 18px;
+        }
+
+        .uet-consent-layout {
+            align-items: stretch;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .uet-consent-actions {
+            width: 100%;
+        }
+
+        .uet-consent-button {
+            flex: 1;
+            min-width: 0;
+        }
+    }
+
+    @media (max-width: 430px) {
+        .uet-consent-actions {
+            flex-direction: column-reverse;
+        }
+
+        .uet-consent-button {
+            width: 100%;
+        }
+    }
+</style>
+
+<script>
+(function () {
+    "use strict";
+
+    const UET_TAG_ID = "187262857";
+    const PRIVACY_POLICY_URL = "privacy.html";
+    const CONSENT_STORAGE_KEY = "microsoft_uet_consent_v1";
+
+    /*
+       Microsoft UET consent is denied by default.
+
+       The Microsoft UET script is not downloaded until the visitor
+       explicitly selects "Accept".
+    */
+    window.uetq = window.uetq || [];
+
+    window.uetq.push("consent", "default", {
+        ad_storage: "denied"
+    });
+
+    let uetScriptLoading = false;
+    let uetInitialized = false;
+
+    function readStoredConsent() {
+        try {
+            return localStorage.getItem(CONSENT_STORAGE_KEY);
+        } catch (error) {
+            console.warn("The consent preference could not be read.", error);
+            return null;
+        }
+    }
+
+    function storeConsent(value) {
+        try {
+            localStorage.setItem(CONSENT_STORAGE_KEY, value);
+        } catch (error) {
+            console.warn("The consent preference could not be saved.", error);
+        }
+    }
+
+    function removeStoredConsent() {
+        try {
+            localStorage.removeItem(CONSENT_STORAGE_KEY);
+        } catch (error) {
+            console.warn("The consent preference could not be removed.", error);
+        }
+    }
+
+    function sendConsentUpdate(status) {
+        window.uetq = window.uetq || [];
+
+        window.uetq.push("consent", "update", {
+            ad_storage: status
+        });
+    }
+
+    function initializeMicrosoftUet() {
+        if (
+            uetInitialized ||
+            typeof window.UET !== "function"
+        ) {
+            return;
+        }
+
+        uetInitialized = true;
+
+        const options = {
+            ti: UET_TAG_ID,
+            enableAutoSpaTracking: true,
+            q: window.uetq
+        };
+
+        window.uetq = new window.UET(options);
+        window.uetq.push("pageLoad");
+    }
+
+    function loadMicrosoftUet() {
+        if (uetInitialized) {
+            return;
+        }
+
+        if (typeof window.UET === "function") {
+            initializeMicrosoftUet();
+            return;
+        }
+
+        if (uetScriptLoading) {
+            return;
+        }
+
+        uetScriptLoading = true;
+
+        const script = document.createElement("script");
+
+        script.type = "text/javascript";
+        script.async = true;
+        script.src = "https://bat.bing.com/bat.js";
+
+        script.onload = function () {
+            uetScriptLoading = false;
+            initializeMicrosoftUet();
+        };
+
+        script.onerror = function () {
+            uetScriptLoading = false;
+            console.error("Microsoft UET could not be loaded.");
+        };
+
+        document.head.appendChild(script);
+    }
+
+    function getConsentBanner() {
+        return document.getElementById("uet-consent-banner");
+    }
+
+    function getSettingsButton() {
+        return document.getElementById(
+            "uet-privacy-settings-button"
+        );
+    }
+
+    function showConsentBanner() {
+        const banner = getConsentBanner();
+        const settingsButton = getSettingsButton();
+
+        if (banner) {
+            banner.style.display = "block";
+        }
+
+        if (settingsButton) {
+            settingsButton.style.display = "none";
+        }
+    }
+
+    function hideConsentBanner() {
+        const banner = getConsentBanner();
+        const settingsButton = getSettingsButton();
+
+        if (banner) {
+            banner.style.display = "none";
+        }
+
+        if (settingsButton) {
+            settingsButton.style.display = "block";
+        }
+    }
+
+    function acceptMicrosoftTracking() {
+        storeConsent("granted");
+        sendConsentUpdate("granted");
+        hideConsentBanner();
+        loadMicrosoftUet();
+    }
+
+    function rejectMicrosoftTracking() {
+        storeConsent("denied");
+        sendConsentUpdate("denied");
+        hideConsentBanner();
+    }
+
+    function reopenPrivacySettings() {
+        showConsentBanner();
+    }
+
+    function resetMicrosoftConsent() {
+        removeStoredConsent();
+        sendConsentUpdate("denied");
+        showConsentBanner();
+    }
+
+    function createConsentInterface() {
+        if (
+            document.getElementById("uet-consent-banner") ||
+            document.getElementById(
+                "uet-privacy-settings-button"
+            )
+        ) {
+            return;
+        }
+
+        const banner = document.createElement("section");
+
+        banner.id = "uet-consent-banner";
+        banner.setAttribute("role", "dialog");
+        banner.setAttribute("aria-modal", "true");
+        banner.setAttribute(
+            "aria-labelledby",
+            "uet-consent-title"
+        );
+
+        banner.innerHTML = `
+            <div class="uet-consent-panel">
+                <div class="uet-consent-layout">
+                    <div class="uet-consent-content">
+                        <strong
+                            class="uet-consent-title"
+                            id="uet-consent-title"
+                        >
+                            Privacy settings
+                        </strong>
+
+                        <p class="uet-consent-description">
+                            We use Microsoft Advertising Universal Event
+                            Tracking to measure visits and conversions.
+                            Microsoft UET is only loaded after you have
+                            explicitly given your consent. You can withdraw
+                            or change your choice at any time.
+                        </p>
+
+                        <a
+                            class="uet-consent-link"
+                            href="${PRIVACY_POLICY_URL}"
+                        >
+                            Learn more in our Privacy Policy
+                        </a>
+                    </div>
+
+                    <div class="uet-consent-actions">
+                        <button
+                            class="uet-consent-button"
+                            id="uet-consent-reject"
+                            type="button"
+                        >
+                            Decline
+                        </button>
+
+                        <button
+                            class="uet-consent-button"
+                            id="uet-consent-accept"
+                            type="button"
+                        >
+                            Accept
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const settingsButton = document.createElement("button");
+
+        settingsButton.id = "uet-privacy-settings-button";
+        settingsButton.type = "button";
+        settingsButton.textContent = "Privacy settings";
+        settingsButton.setAttribute(
+            "aria-label",
+            "Change Microsoft Advertising privacy settings"
+        );
+
+        document.body.appendChild(banner);
+        document.body.appendChild(settingsButton);
+
+        document
+            .getElementById("uet-consent-accept")
+            .addEventListener(
+                "click",
+                acceptMicrosoftTracking
+            );
+
+        document
+            .getElementById("uet-consent-reject")
+            .addEventListener(
+                "click",
+                rejectMicrosoftTracking
+            );
+
+        settingsButton.addEventListener(
+            "click",
+            reopenPrivacySettings
+        );
+    }
+
+    function initializeConsentManagement() {
+        createConsentInterface();
+
+        const savedConsent = readStoredConsent();
+
+        if (savedConsent === "granted") {
+            sendConsentUpdate("granted");
+            hideConsentBanner();
+            loadMicrosoftUet();
+            return;
+        }
+
+        if (savedConsent === "denied") {
+            sendConsentUpdate("denied");
+            hideConsentBanner();
+            return;
+        }
+
+        sendConsentUpdate("denied");
+        showConsentBanner();
+    }
+
+    /*
+       These functions are globally available.
+
+       Use:
+       window.openUetPrivacySettings();
+
+       or:
+       window.resetUetConsent();
+    */
+    window.openUetPrivacySettings = reopenPrivacySettings;
+    window.resetUetConsent = resetMicrosoftConsent;
+
+    if (document.readyState === "loading") {
+        document.addEventListener(
+            "DOMContentLoaded",
+            initializeConsentManagement,
+            { once: true }
+        );
+    } else {
+        initializeConsentManagement();
+    }
+})();
+</script>
+```
+
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mustatil 6 — AI-Powered Geospatial Analysis Workspace</title>

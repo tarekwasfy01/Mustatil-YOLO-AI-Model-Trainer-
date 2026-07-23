@@ -11,6 +11,12 @@ CODE: T9PYP-P2DP4-TJ3M9-DVFW2-TYWFZ
 	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
 </a>
 
+Mustatil 5.6 is available for free as Mustatil Legacy:
+
+<a href="https://get.microsoft.com/installer/download/9n6khfgmpdq4?referrer=appbadge" target="_self" >
+	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
+</a>
+
 # Update: 14.07.2026 
 
 The Mustatil 6 release might be in a few days, I am working on getting it published in the Microsoft Store again, as an update. Right now it is in certification. But honestly I do think that the Python only 5.6 version might be the better one. Version 5.6 will stay free and is still the recommended stable version. Version 6 will be under development and hopefully will become the better version over time.

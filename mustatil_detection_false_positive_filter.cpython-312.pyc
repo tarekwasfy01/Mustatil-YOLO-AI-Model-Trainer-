@@ -1,0 +1,714 @@
+# -*- coding: utf-8 -*-
+"""
+Mustatil plugin: Annotator Scroll + Zoom/Reload Draw Fix v1
+
+Purpose
+-------
+1) Adds a scroll area to the Annotator left control panel.
+2) Fixes the bug where Detection-like/viewport map reloads after zoom/pan can
+   interrupt left-mouse annotation drawing, so boxes cannot be drawn reliably.
+
+Install
+-------
+Copy this file into Mustatil's `mustatil_plugins` folder and restart Mustatil.
+It is an additive patch and does not replace the Annotator or the Annotator
+Preview/Manage Classes plugin.
+
+How the draw fix works
+----------------------
+- Left mouse drag on Annotator is handled by a stable overlay handler.
+- While a box is being drawn, pyramid/viewport reloads are postponed.
+- If a pending reload fires during drawing, it is retried after drawing ends.
+- Right/middle pan and wheel zoom behaviour from existing plugins is preserved.
+"""
+
+from __future__ import annotations
+
+import sys
+import time
+import traceback
+from typing import Any, Optional
+
+PLUGIN_NAME = "Mustatil Annotator Scroll + Zoom Draw Fix v1"
+PLUGIN_PREFIX = "[Mustatil Annotator Scroll/DrawFix v1]"
+
+_PATCHED_QTAB = False
+_ORIG_ADD_TAB = None
+_ORIG_INSERT_TAB = None
+_PROCESSED_PAGES = set()
+_PATCHED_VIEWS = set()
+_PATCHED_WORKSPACES = set()
+_PATCHED_RELOAD_MODULES = set()
+
+
+def _log(msg: str) -> None:
+    try:
+        print(f"{PLUGIN_PREFIX} {msg}")
+    except Exception:
+        pass
+
+
+def _qt():
+    try:
+        from PySide6.QtWidgets import QApplication, QTabWidget, QSplitter, QScrollArea, QSizePolicy
+        from PySide6.QtCore import Qt, QTimer, QRectF
+        from PySide6.QtGui import QPen, QColor
+        return {
+            "QApplication": QApplication,
+            "QTabWidget": QTabWidget,
+            "QSplitter": QSplitter,
+            "QScrollArea": QScrollArea,
+            "QSizePolicy": QSizePolicy,
+            "Qt": Qt,
+            "QTimer": QTimer,
+            "QRectF": QRectF,
+            "QPen": QPen,
+            "QColor": QColor,
+        }
+    except Exception:
+        return None
+
+
+def _norm(s: Any) -> str:
+    return str(s or "").strip().lower().replace("_", "-")
+
+
+def _is_annotator_label(text: Any) -> bool:
+    low = _norm(text)
+    return low == "annotator" or ("annotator" in low and "video" not in low)
+
+
+def _event_pos(event: Any):
+    try:
+        return event.position().toPoint()
+    except Exception:
+        try:
+            return event.pos()
+        except Exception:
+            return None
+
+
+def _workspace_from_widget(widget: Any) -> Optional[Any]:
+    cur = widget
+    for _ in range(120):
+        if cur is None:
+            return None
+        try:
+            if cur.__class__.__name__ == "MustatilQtWorkspace":
+                return cur
+        except Exception:
+            pass
+        try:
+            if hasattr(cur, "tabs") and hasattr(cur, "annotator_view") and hasattr(cur, "ann_imgs"):
+                return cur
+        except Exception:
+            pass
+        try:
+            cur = cur.parentWidget()
+        except Exception:
+            try:
+                cur = cur.parent()
+            except Exception:
+                return None
+    return None
+
+
+def _safe_ws_log(ws: Any, msg: str) -> None:
+    try:
+        if ws is not None and hasattr(ws, "log"):
+            ws.log(str(msg))
+            return
+    except Exception:
+        pass
+    _log(msg)
+
+
+def _is_drawing_view(view: Any) -> bool:
+    try:
+        return bool(
+            getattr(view, "_mustatil_ann_stable_drawing", False)
+            or getattr(view, "_drawing", False)
+            or getattr(view, "_mustatil_annotation_drag_active", False)
+        )
+    except Exception:
+        return False
+
+
+def _is_workspace_drawing(ws: Any) -> bool:
+    try:
+        return _is_drawing_view(getattr(ws, "annotator_view", None))
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Annotator left scroll area
+# ---------------------------------------------------------------------------
+
+def _iter_layout_items(layout: Any):
+    try:
+        for i in range(layout.count()):
+            yield i, layout.itemAt(i)
+    except Exception:
+        return
+
+
+def _wrap_annotator_left_controls(page: Any, label: str = "") -> bool:
+    qt = _qt()
+    if not qt or page is None:
+        return False
+    QSplitter = qt["QSplitter"]
+    QScrollArea = qt["QScrollArea"]
+    QSizePolicy = qt["QSizePolicy"]
+    Qt = qt["Qt"]
+
+    try:
+        if bool(page.property("MustatilAnnotatorScrollDrawFixScroll")):
+            return True
+    except Exception:
+        pass
+
+    splitter = None
+    try:
+        for sp in page.findChildren(QSplitter):
+            if int(sp.count()) >= 2:
+                splitter = sp
+                break
+    except Exception:
+        pass
+
+    if splitter is None:
+        try:
+            lay = page.layout()
+            if lay is not None:
+                for _idx, item in _iter_layout_items(lay):
+                    w = item.widget()
+                    if isinstance(w, QSplitter) and int(w.count()) >= 2:
+                        splitter = w
+                        break
+        except Exception:
+            pass
+
+    if splitter is None:
+        return False
+
+    try:
+        left = splitter.widget(0)
+        if isinstance(left, QScrollArea):
+            try:
+                left.setWidgetResizable(True)
+                left.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded if hasattr(Qt, "ScrollBarPolicy") else Qt.ScrollBarAsNeeded)
+                left.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded if hasattr(Qt, "ScrollBarPolicy") else Qt.ScrollBarAsNeeded)
+            except Exception:
+                pass
+            page.setProperty("MustatilAnnotatorScrollDrawFixScroll", True)
+            return True
+        if left is None:
+            return False
+
+        old_sizes = []
+        try:
+            old_sizes = list(splitter.sizes())
+        except Exception:
+            old_sizes = []
+
+        scroll = QScrollArea()
+        scroll.setObjectName("MustatilAnnotatorLeftControlsScrollArea_DrawFix")
+        scroll.setWidgetResizable(True)
+        try:
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame if hasattr(QScrollArea, "Shape") else 0)
+        except Exception:
+            pass
+        try:
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded if hasattr(Qt, "ScrollBarPolicy") else Qt.ScrollBarAsNeeded)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded if hasattr(Qt, "ScrollBarPolicy") else Qt.ScrollBarAsNeeded)
+        except Exception:
+            pass
+        try:
+            scroll.setMinimumWidth(320)
+            scroll.setMaximumWidth(620)
+            pol = getattr(QSizePolicy, "Policy", QSizePolicy)
+            scroll.setSizePolicy(pol.Preferred, pol.Expanding)
+        except Exception:
+            pass
+
+        idx = 0
+        try:
+            idx = splitter.indexOf(left)
+            if idx < 0:
+                idx = 0
+        except Exception:
+            idx = 0
+
+        left.setParent(None)
+        scroll.setWidget(left)
+        splitter.insertWidget(idx, scroll)
+        try:
+            if old_sizes and len(old_sizes) >= 2:
+                splitter.setSizes(old_sizes)
+            else:
+                splitter.setSizes([430, 950])
+        except Exception:
+            pass
+
+        page.setProperty("MustatilAnnotatorScrollDrawFixScroll", True)
+        _log(f"Annotator left panel wrapped in scroll area: {label!r}")
+        return True
+    except Exception as exc:
+        _log("Annotator scroll patch failed: " + str(exc))
+        try:
+            traceback.print_exc()
+        except Exception:
+            pass
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Stable draw handler
+# ---------------------------------------------------------------------------
+
+def _safe_remove_scene_item(view: Any, item: Any) -> None:
+    if view is None or item is None:
+        return
+    try:
+        scene = view.scene()
+        if scene is not None and item.scene() is scene:
+            scene.removeItem(item)
+    except Exception:
+        try:
+            # If the scene was cleared during a reload, just ignore.
+            pass
+        except Exception:
+            pass
+
+
+def _make_temp_rect(view: Any, start: Any) -> Any:
+    qt = _qt()
+    if not qt or view is None or start is None:
+        return None
+    QRectF = qt["QRectF"]
+    QPen = qt["QPen"]
+    QColor = qt["QColor"]
+    Qt = qt["Qt"]
+    try:
+        pen = QPen(QColor("#0057d8"))
+        pen.setWidth(2)
+        try:
+            pen.setStyle(Qt.PenStyle.DashLine if hasattr(Qt, "PenStyle") else Qt.DashLine)
+        except Exception:
+            pass
+        return view.scene().addRect(QRectF(start, start), pen)
+    except Exception:
+        return None
+
+
+def _patch_annotator_view(ws: Any) -> bool:
+    qt = _qt()
+    if not qt or ws is None:
+        return False
+    Qt = qt["Qt"]
+    QRectF = qt["QRectF"]
+    view = getattr(ws, "annotator_view", None)
+    if view is None:
+        return False
+    try:
+        if id(view) in _PATCHED_VIEWS or bool(view.property("MustatilAnnotatorScrollDrawFixView")):
+            return True
+    except Exception:
+        if id(view) in _PATCHED_VIEWS:
+            return True
+
+    old_press = view.mousePressEvent
+    old_move = view.mouseMoveEvent
+    old_release = view.mouseReleaseEvent
+    old_wheel = view.wheelEvent
+    old_scroll = view.scrollContentsBy
+
+    def mouse_press(event, _old=old_press):
+        try:
+            if event.button() == Qt.MouseButton.LeftButton if hasattr(Qt, "MouseButton") else event.button() == Qt.LeftButton:
+                if getattr(view, "pixmap_item", None) is not None:
+                    p = _event_pos(event)
+                    if p is not None:
+                        start = view.mapToScene(p)
+                        view._mustatil_ann_stable_drawing = True
+                        view._mustatil_annotation_drag_active = True
+                        view._drawing = True
+                        view._start = start
+                        view._mustatil_ann_stable_start = start
+                        # Remove any old temporary item and create a fresh one.
+                        _safe_remove_scene_item(view, getattr(view, "_temp_rect", None))
+                        item = _make_temp_rect(view, start)
+                        view._temp_rect = item
+                        view._mustatil_ann_stable_temp_rect = item
+                        try:
+                            view.setCursor(Qt.CursorShape.CrossCursor if hasattr(Qt, "CursorShape") else Qt.CrossCursor)
+                        except Exception:
+                            pass
+                        event.accept()
+                        return
+        except Exception:
+            pass
+        return _old(event)
+
+    def mouse_move(event, _old=old_move):
+        try:
+            if _is_drawing_view(view):
+                start = getattr(view, "_mustatil_ann_stable_start", None) or getattr(view, "_start", None)
+                item = getattr(view, "_mustatil_ann_stable_temp_rect", None) or getattr(view, "_temp_rect", None)
+                p = _event_pos(event)
+                if start is not None and p is not None:
+                    cur = view.mapToScene(p)
+                    if item is None or getattr(item, "scene", lambda: None)() is None:
+                        item = _make_temp_rect(view, start)
+                        view._temp_rect = item
+                        view._mustatil_ann_stable_temp_rect = item
+                    try:
+                        if item is not None:
+                            item.setRect(QRectF(start, cur).normalized())
+                    except Exception:
+                        pass
+                    event.accept()
+                    return
+        except Exception:
+            pass
+        return _old(event)
+
+    def mouse_release(event, _old=old_release):
+        try:
+            left_button = Qt.MouseButton.LeftButton if hasattr(Qt, "MouseButton") else Qt.LeftButton
+            if _is_drawing_view(view) and event.button() == left_button:
+                start = getattr(view, "_mustatil_ann_stable_start", None) or getattr(view, "_start", None)
+                p = _event_pos(event)
+                cur = view.mapToScene(p) if p is not None else None
+                item = getattr(view, "_mustatil_ann_stable_temp_rect", None) or getattr(view, "_temp_rect", None)
+                _safe_remove_scene_item(view, item)
+
+                view._mustatil_ann_stable_drawing = False
+                view._mustatil_annotation_drag_active = False
+                view._drawing = False
+                view._start = None
+                view._temp_rect = None
+                view._mustatil_ann_stable_start = None
+                view._mustatil_ann_stable_temp_rect = None
+                try:
+                    view.unsetCursor()
+                except Exception:
+                    pass
+
+                if start is not None and cur is not None:
+                    rect = QRectF(start, cur).normalized()
+                    if rect.width() >= 4 and rect.height() >= 4:
+                        try:
+                            view.box_drawn.emit(float(rect.left()), float(rect.top()), float(rect.right()), float(rect.bottom()))
+                        except Exception as exc:
+                            _safe_ws_log(ws, "Annotator box signal failed: " + str(exc))
+
+                # Run one delayed reload after drawing, not during it. This keeps the
+                # zoomed viewport sharp but avoids aborting the rectangle operation.
+                try:
+                    _postpone_or_trigger_reload(ws, 220)
+                except Exception:
+                    pass
+                event.accept()
+                return
+        except Exception as exc:
+            try:
+                view._mustatil_ann_stable_drawing = False
+                view._mustatil_annotation_drag_active = False
+                view._drawing = False
+                view._start = None
+                view._temp_rect = None
+            except Exception:
+                pass
+            _safe_ws_log(ws, "Stable Annotator release fallback: " + str(exc))
+        return _old(event)
+
+    def wheel_event(event, _old=old_wheel):
+        # Do not let a wheel-triggered preview reload run inside an active box drag.
+        try:
+            if _is_drawing_view(view):
+                event.accept()
+                return
+        except Exception:
+            pass
+        return _old(event)
+
+    def scroll_contents_by(dx: int, dy: int, _old=old_scroll):
+        try:
+            _old(dx, dy)
+        except Exception:
+            pass
+        # If scrolling happens as a side effect of dragging/zooming, let the guarded
+        # reload logic decide whether to postpone.
+        try:
+            if _is_drawing_view(view):
+                return
+        except Exception:
+            pass
+
+    try:
+        view.mousePressEvent = mouse_press
+        view.mouseMoveEvent = mouse_move
+        view.mouseReleaseEvent = mouse_release
+        view.wheelEvent = wheel_event
+        view.scrollContentsBy = scroll_contents_by
+        try:
+            view.setMouseTracking(True)
+        except Exception:
+            pass
+        try:
+            view.setProperty("MustatilAnnotatorScrollDrawFixView", True)
+        except Exception:
+            pass
+        _PATCHED_VIEWS.add(id(view))
+        _safe_ws_log(ws, "Annotator draw fix active: viewport reloads are postponed while drawing boxes.")
+        return True
+    except Exception as exc:
+        _log("Could not patch Annotator view events: " + str(exc))
+        return False
+
+
+def _postpone_or_trigger_reload(ws: Any, delay: int = 220) -> None:
+    """After drawing, run a deferred viewport reload if the existing preview plugin exposes one."""
+    qt = _qt()
+    if not qt or ws is None:
+        return
+    QTimer = qt["QTimer"]
+    # Prefer the existing preview plugin scheduler if present.
+    for mod in list(sys.modules.values()):
+        try:
+            sched = getattr(mod, "_schedule_annotator_pyramid_reload", None)
+            if callable(sched) and hasattr(mod, "_reload_annotator_pyramid"):
+                QTimer.singleShot(int(delay), lambda ws=ws, sched=sched: sched(ws, 80))
+                return
+        except Exception:
+            pass
+
+
+def _patch_reload_modules() -> None:
+    """Guard existing Annotator pyramid reload functions from external plugins."""
+    qt = _qt()
+    if not qt:
+        return
+    QTimer = qt["QTimer"]
+
+    for name, mod in list(sys.modules.items()):
+        try:
+            if mod is None or id(mod) in _PATCHED_RELOAD_MODULES:
+                continue
+            reload_fn = getattr(mod, "_reload_annotator_pyramid", None)
+            if not callable(reload_fn):
+                continue
+            # Be conservative: only patch annotator-related modules.
+            mod_name = str(name).lower()
+            if "annotator" not in mod_name and "preview" not in mod_name:
+                continue
+
+            def guarded_reload(ws, _old=reload_fn):
+                try:
+                    if _is_workspace_drawing(ws):
+                        try:
+                            c = int(getattr(ws, "_mustatil_ann_reload_postponed_count", 0) or 0)
+                            ws._mustatil_ann_reload_postponed_count = c + 1
+                        except Exception:
+                            pass
+                        # Retry shortly. While the mouse is down this keeps postponing;
+                        # after release it performs the pending sharp reload.
+                        try:
+                            QTimer.singleShot(250, lambda ws=ws: guarded_reload(ws))
+                        except Exception:
+                            pass
+                        return
+                    try:
+                        ws._mustatil_ann_reload_postponed_count = 0
+                    except Exception:
+                        pass
+                    return _old(ws)
+                except Exception as exc:
+                    try:
+                        _safe_ws_log(ws, "Guarded annotator reload failed: " + str(exc))
+                    except Exception:
+                        pass
+                    try:
+                        return _old(ws)
+                    except Exception:
+                        return None
+
+            setattr(mod, "_reload_annotator_pyramid", guarded_reload)
+            try:
+                setattr(mod, "_mustatil_annotator_reload_guarded_by_scroll_draw_fix", True)
+            except Exception:
+                pass
+            _PATCHED_RELOAD_MODULES.add(id(mod))
+            _log(f"Guarded annotator pyramid reload in module: {name}")
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Workspace/page scanning and tab hooks
+# ---------------------------------------------------------------------------
+
+def _process_annotator_page(page: Any, label: str = "") -> bool:
+    if page is None:
+        return False
+    ok = False
+    try:
+        ok = _wrap_annotator_left_controls(page, label) or ok
+    except Exception:
+        pass
+    try:
+        ws = _workspace_from_widget(page)
+        if ws is not None:
+            ok = _patch_annotator_view(ws) or ok
+            _PATCHED_WORKSPACES.add(id(ws))
+    except Exception:
+        pass
+    return ok
+
+
+def _process_tabwidget(tw: Any) -> bool:
+    if tw is None:
+        return False
+    ok = False
+    try:
+        count = int(tw.count())
+    except Exception:
+        return False
+    for i in range(count):
+        try:
+            label = str(tw.tabText(i) or "")
+            if _is_annotator_label(label):
+                page = tw.widget(i)
+                ok = _process_annotator_page(page, label) or ok
+        except Exception:
+            pass
+    return ok
+
+
+def _scan(root: Any = None) -> bool:
+    qt = _qt()
+    if not qt:
+        _log("PySide6 unavailable; plugin inactive")
+        return False
+    QApplication = qt["QApplication"]
+    QTabWidget = qt["QTabWidget"]
+
+    _patch_reload_modules()
+
+    tabwidgets = []
+    try:
+        if root is not None:
+            if isinstance(root, QTabWidget):
+                tabwidgets.append(root)
+            try:
+                tabwidgets.extend(root.findChildren(QTabWidget))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if not tabwidgets:
+        try:
+            app = QApplication.instance()
+            if app:
+                for top in app.topLevelWidgets():
+                    try:
+                        if isinstance(top, QTabWidget):
+                            tabwidgets.append(top)
+                        tabwidgets.extend(top.findChildren(QTabWidget))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    seen = set()
+    ok = False
+    for tw in tabwidgets[:160]:
+        try:
+            if id(tw) in seen:
+                continue
+            seen.add(id(tw))
+            ok = _process_tabwidget(tw) or ok
+        except Exception:
+            pass
+    return ok
+
+
+def _schedule(root: Any = None) -> None:
+    qt = _qt()
+    if not qt:
+        return
+    QTimer = qt["QTimer"]
+    try:
+        for ms in (0, 50, 150, 350, 700, 1200, 2200, 4000, 7000, 11000):
+            QTimer.singleShot(ms, lambda root=root: _scan(root))
+    except Exception:
+        pass
+
+
+def _install_qtab_hooks() -> None:
+    global _PATCHED_QTAB, _ORIG_ADD_TAB, _ORIG_INSERT_TAB
+    if _PATCHED_QTAB:
+        return
+    qt = _qt()
+    if not qt:
+        return
+    QTabWidget = qt["QTabWidget"]
+
+    _ORIG_ADD_TAB = QTabWidget.addTab
+    _ORIG_INSERT_TAB = QTabWidget.insertTab
+
+    def add_tab_hook(self, widget, *args):
+        result = _ORIG_ADD_TAB(self, widget, *args)
+        try:
+            label = ""
+            if args:
+                label = str(args[-1])
+            if _is_annotator_label(label):
+                _schedule(self)
+            else:
+                # Lightweight delayed scan catches cases where a plugin changes tab names later.
+                _schedule(self)
+        except Exception:
+            pass
+        return result
+
+    def insert_tab_hook(self, index, widget, *args):
+        result = _ORIG_INSERT_TAB(self, index, widget, *args)
+        try:
+            label = ""
+            if args:
+                label = str(args[-1])
+            if _is_annotator_label(label):
+                _schedule(self)
+            else:
+                _schedule(self)
+        except Exception:
+            pass
+        return result
+
+    try:
+        QTabWidget.addTab = add_tab_hook
+        QTabWidget.insertTab = insert_tab_hook
+        _PATCHED_QTAB = True
+        _log("QTabWidget hooks installed")
+    except Exception as exc:
+        _log("Could not install QTabWidget hooks: " + str(exc))
+
+
+def mustatil_plugin_init():
+    try:
+        _install_qtab_hooks()
+        _schedule(None)
+        _log("initialized")
+    except Exception as exc:
+        _log("init failed: " + str(exc))
+
+
+# Some launchers import plugin files without calling the hook. Keep this harmless.
+try:
+    mustatil_plugin_init()
+except Exception:
+    pass

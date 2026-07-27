@@ -1,0 +1,1116 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Mustatil plugin: Annotator Preview exactly like Detection + Manage Classes v6
+
+Install:
+    Copy this file into:
+        mustatil_plugins/mustatil_annotator_preview_manage_classes_plugin.py
+
+Remove older annotator preview plugins first:
+    mustatil_annotator_detection_preview_plugin.py
+
+What this version changes:
+1) Annotator preview uses the same detection_preview_service flow as Detection:
+   - initial full overview: detection_preview_service.load_detection_preview_image(...)
+   - zoom/pan viewport/pyramid reload: detection_preview_service.load_detection_viewport_image(...)
+   - same original-image-coordinate scene concept via set_pil_image_source_window(...)
+   - cached viewport tiles from detection_preview_service are used automatically
+
+2) No "maximum px" control.
+
+3) Manage classes only creates/deletes classes.
+   New classes are pushed into Mustatil's existing Annotator dropdown.
+   The active class is still chosen in Mustatil's existing Annotator field
+   "Annotations for selected box" / ann_cls.
+
+Controls:
+   - Mouse wheel = zoom and reload visible viewport/pyramid
+   - Right-drag or middle-drag = pan and reload visible viewport/pyramid
+   - Left-drag = draw annotation box
+   - Fit image = return to full overview
+   - Redraw preview = reload current overview/viewport
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import traceback
+from pathlib import Path
+from typing import Any, List, Optional, Tuple
+
+_PATCHED_QTABWIDGET = False
+_ORIGINAL_QTAB_ADD = None
+_PATCHED_WORKSPACES = set()
+_PATCHED_PAGES = set()
+
+
+def _log(msg: str) -> None:
+    try:
+        print("[Mustatil Annotator Preview v6] " + str(msg))
+    except Exception:
+        pass
+
+
+def _safe_ws_log(ws: Any, msg: str) -> None:
+    try:
+        if ws is not None and hasattr(ws, "log"):
+            ws.log(str(msg))
+            return
+    except Exception:
+        pass
+    _log(msg)
+
+
+def _workspace_from_widget(widget: Any) -> Optional[Any]:
+    cur = widget
+    for _ in range(100):
+        if cur is None:
+            break
+        try:
+            if cur.__class__.__name__ == "MustatilQtWorkspace":
+                return cur
+        except Exception:
+            pass
+        try:
+            if hasattr(cur, "tabs") and hasattr(cur, "ann_imgs"):
+                return cur
+        except Exception:
+            pass
+        try:
+            cur = cur.parentWidget()
+        except Exception:
+            try:
+                cur = cur.parent()
+            except Exception:
+                break
+    return None
+
+
+def _import_detection_preview_service():
+    try:
+        import detection_preview_service
+        return detection_preview_service
+    except Exception as exc:
+        raise RuntimeError(
+            "detection_preview_service.py could not be imported. "
+            "Put it next to mustatil_qt_workspace.py or inside mustatil_plugins/."
+        ) from exc
+
+
+def _is_tiff_path(path: str) -> bool:
+    try:
+        svc = _import_detection_preview_service()
+        fn = getattr(svc, "is_tiff_path", None)
+        if callable(fn):
+            return bool(fn(str(path)))
+    except Exception:
+        pass
+    return str(path or "").lower().endswith((".tif", ".tiff"))
+
+
+def _fallback_loader(path: str, maxs: int = 2400):
+    """Only used for non-TIFF fallback if the service delegates to fallback_loader."""
+    from PIL import Image
+    im = Image.open(str(path)).convert("RGB")
+    w, h = im.size
+    im.thumbnail((max(512, int(maxs or 2400)), max(512, int(maxs or 2400))))
+    return im.copy(), w, h
+
+
+def _load_detection_overview(path: str):
+    """Use the same initial preview loader as Detection."""
+    svc = _import_detection_preview_service()
+    fn = getattr(svc, "load_detection_preview_image", None)
+    if not callable(fn):
+        raise RuntimeError("detection_preview_service.load_detection_preview_image is missing.")
+    return fn(str(path), maxs=2400, fallback_loader=_fallback_loader)
+
+
+def _load_detection_viewport(path: str, center_x: float, center_y: float, source_width: float, source_height: float, out_width: int, out_height: int):
+    """Use the same viewport/pyramid loader as Detection."""
+    svc = _import_detection_preview_service()
+    fn = getattr(svc, "load_detection_viewport_image", None)
+    if not callable(fn):
+        raise RuntimeError("detection_preview_service.load_detection_viewport_image is missing.")
+
+    try:
+        return fn(
+            str(path),
+            center_x=float(center_x),
+            center_y=float(center_y),
+            source_width=float(source_width),
+            source_height=float(source_height),
+            out_width=int(out_width),
+            out_height=int(out_height),
+            tile_px=512,
+        )
+    except TypeError as type_exc:
+        if "unexpected keyword argument" not in str(type_exc):
+            raise
+        pps = float(out_width) / max(1.0, float(source_width))
+        return fn(str(path), float(center_x), float(center_y), int(out_width), int(out_height), pps, max_output_px=4096)
+
+
+def _project_root(ws: Any) -> Optional[Path]:
+    try:
+        raw = str(ws.project.get() or "").strip().strip('"')
+        if raw:
+            return Path(raw).expanduser()
+    except Exception:
+        pass
+    try:
+        if getattr(ws, "ann_imgs", None):
+            img = Path(ws.ann_imgs[ws.ann_i])
+            if img.parent.name.lower() == "images":
+                return img.parent.parent
+            return img.parent
+    except Exception:
+        pass
+    return None
+
+
+def _project_json_path(ws: Any) -> Optional[Path]:
+    root = _project_root(ws)
+    return None if root is None else root / "project.json"
+
+
+def _default_classes() -> List[str]:
+    return ["mustatil", "false_positive"]
+
+
+def _load_classes(ws: Any) -> List[str]:
+    classes = []
+    pj = _project_json_path(ws)
+    if pj is not None and pj.exists():
+        try:
+            data = json.loads(pj.read_text(encoding="utf-8", errors="ignore"))
+            raw = data.get("classes")
+            if isinstance(raw, list):
+                classes = [str(x).strip() for x in raw if str(x).strip()]
+        except Exception:
+            pass
+
+    if not classes:
+        try:
+            g = globals().get("MUSTATIL_GLOBALS") or {}
+            raw = g.get("CLASSES")
+            if isinstance(raw, list):
+                classes = [str(x).strip() for x in raw if str(x).strip()]
+        except Exception:
+            pass
+
+    if not classes:
+        try:
+            import mustatil_legacy_backend as backend
+            raw = getattr(backend, "CLASSES", None)
+            if isinstance(raw, list):
+                classes = [str(x).strip() for x in raw if str(x).strip()]
+        except Exception:
+            pass
+
+    if not classes:
+        classes = _default_classes()
+    if len(classes) == 1:
+        classes.append("false_positive")
+    return classes
+
+
+def _save_classes(ws: Any, classes: List[str]) -> None:
+    classes = [str(c).strip() for c in classes if str(c).strip()] or _default_classes()
+    ws.mustatil_annotation_classes = list(classes)
+
+    try:
+        g = globals().get("MUSTATIL_GLOBALS") or {}
+        if "CLASSES" in g:
+            g["CLASSES"] = list(classes)
+    except Exception:
+        pass
+
+    try:
+        import mustatil_legacy_backend as backend
+        if hasattr(backend, "CLASSES"):
+            backend.CLASSES = list(classes)
+    except Exception:
+        pass
+
+    pj = _project_json_path(ws)
+    if pj is not None:
+        try:
+            pj.parent.mkdir(parents=True, exist_ok=True)
+            data = {}
+            if pj.exists():
+                try:
+                    data = json.loads(pj.read_text(encoding="utf-8", errors="ignore"))
+                    if not isinstance(data, dict):
+                        data = {}
+                except Exception:
+                    data = {}
+            data["classes"] = list(classes)
+            data.setdefault("created_by", "Mustatil")
+            pj.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            _safe_ws_log(ws, f"Annotation classes saved: {classes}")
+        except Exception as exc:
+            _safe_ws_log(ws, "Could not save annotation classes: " + str(exc))
+
+
+def _ensure_class_state(ws: Any) -> List[str]:
+    classes = _load_classes(ws)
+    ws.mustatil_annotation_classes = list(classes)
+    return classes
+
+
+def _class_name(ws: Any, class_id: int) -> str:
+    classes = getattr(ws, "mustatil_annotation_classes", None) or _ensure_class_state(ws)
+    try:
+        i = int(class_id)
+        if 0 <= i < len(classes):
+            return str(classes[i])
+    except Exception:
+        pass
+    return f"class_{class_id}"
+
+
+def _sync_class_list(ws: Any) -> None:
+    classes = _ensure_class_state(ws)
+    listw = getattr(ws, "mustatil_ann_class_list", None)
+    if listw is None:
+        return
+    try:
+        current = listw.currentRow()
+        listw.blockSignals(True)
+        listw.clear()
+        used = set()
+        try:
+            for b in getattr(ws, "ann_boxes", []) or []:
+                used.add(int(b[0]))
+        except Exception:
+            pass
+        for i, name in enumerate(classes):
+            suffix = "  (used)" if i in used else ""
+            listw.addItem(f"{i}: {name}{suffix}")
+        if 0 <= current < listw.count():
+            listw.setCurrentRow(current)
+        listw.blockSignals(False)
+    except Exception:
+        try:
+            listw.blockSignals(False)
+        except Exception:
+            pass
+
+
+def _view_center(view: Any):
+    try:
+        return view.mapToScene(view.viewport().rect().center())
+    except Exception:
+        return None
+
+
+def _restore_center(view: Any, center: Any) -> None:
+    try:
+        if center is not None:
+            view.centerOn(center)
+    except Exception:
+        pass
+
+
+def _current_source_window(ws: Any) -> Optional[Tuple[float, float, float, float]]:
+    try:
+        view = getattr(ws, "annotator_view", None)
+        W = float(getattr(ws, "ann_orig_w", 0) or 0)
+        H = float(getattr(ws, "ann_orig_h", 0) or 0)
+        if view is None or W <= 0 or H <= 0:
+            return None
+        rect = view.mapToScene(view.viewport().rect()).boundingRect()
+        x1 = max(0.0, min(W, float(rect.left())))
+        y1 = max(0.0, min(H, float(rect.top())))
+        x2 = max(0.0, min(W, float(rect.right())))
+        y2 = max(0.0, min(H, float(rect.bottom())))
+        if x2 <= x1 or y2 <= y1:
+            return getattr(ws, "ann_preview_window", None) or (0.0, 0.0, W, H)
+        pad_x = max(16.0, (x2 - x1) * 0.15)
+        pad_y = max(16.0, (y2 - y1) * 0.15)
+        x1 = max(0.0, x1 - pad_x)
+        y1 = max(0.0, y1 - pad_y)
+        x2 = min(W, x2 + pad_x)
+        y2 = min(H, y2 + pad_y)
+        return (x1, y1, x2, y2)
+    except Exception:
+        return getattr(ws, "ann_preview_window", None)
+
+
+def _draw_boxes_in_current_scene(ws: Any, view: Any, win: Tuple[float, float, float, float]) -> None:
+    try:
+        _ensure_class_state(ws)
+        wx1, wy1, wx2, wy2 = map(float, win)
+        colors = ["lime", "red", "cyan", "magenta", "yellow", "orange", "white"]
+        for idx, b in enumerate(getattr(ws, "ann_boxes", []) or []):
+            try:
+                c, x1, y1, x2, y2 = b
+                # Skip boxes outside current source window for viewport mode.
+                if float(x2) < wx1 or float(x1) > wx2 or float(y2) < wy1 or float(y1) > wy2:
+                    # It is also fine to draw them outside the visible image,
+                    # but skipping is faster for huge label sets.
+                    pass
+                selected = idx == getattr(ws, "ann_selected", -1)
+                color = "orange" if selected else colors[int(c) % len(colors)]
+                label = f"{idx+1}: {int(c)} {_class_name(ws, int(c))}"
+                view.add_box(float(x1), float(y1), float(x2), float(y2), color, label)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _redraw_annotation_scene(ws: Any, fit: bool = False) -> None:
+    """
+    Draw current ws.ann_preview into annotator_view using the current source window.
+    This mirrors Detection.redraw(): set_pil_image_source_window + keep transform/center.
+    """
+    view = getattr(ws, "annotator_view", None)
+    preview = getattr(ws, "ann_preview", None)
+    if view is None or preview is None:
+        return
+
+    W = int(getattr(ws, "ann_orig_w", 1) or 1)
+    H = int(getattr(ws, "ann_orig_h", 1) or 1)
+    win = getattr(ws, "ann_preview_window", None)
+    if not win or len(win) != 4:
+        win = (0.0, 0.0, float(W), float(H))
+        ws.ann_preview_window = win
+
+    old_transform = None if fit else view.transform()
+    old_center = None if fit else _view_center(view)
+
+    if hasattr(view, "set_pil_image_source_window"):
+        view.set_pil_image_source_window(preview, W, H, win, fit=bool(fit))
+    else:
+        view.set_pil_image(preview)
+
+    if old_transform is not None:
+        try:
+            view.setTransform(old_transform)
+            _restore_center(view, old_center)
+        except Exception:
+            pass
+
+    _draw_boxes_in_current_scene(ws, view, win)
+
+
+def _schedule_annotator_pyramid_reload(ws: Any, delay: int = 180) -> None:
+    try:
+        from PySide6.QtCore import QTimer
+        if getattr(ws, "ann_preview_pyramid_timer", None) is None:
+            timer = QTimer(ws)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: _reload_annotator_pyramid(ws))
+            ws.ann_preview_pyramid_timer = timer
+        ws.ann_preview_pyramid_timer.start(int(delay))
+    except Exception as exc:
+        _safe_ws_log(ws, "Annotator pyramid schedule failed: " + str(exc))
+
+
+def _reload_annotator_pyramid(ws: Any) -> None:
+    try:
+        if not getattr(ws, "ann_imgs", None):
+            return
+        path = str(Path(ws.ann_imgs[ws.ann_i]))
+        if not _is_tiff_path(path):
+            return
+        if getattr(ws, "ann_preview", None) is None:
+            return
+
+        view = getattr(ws, "annotator_view", None)
+        if view is None:
+            return
+
+        win = _current_source_window(ws)
+        if not win:
+            return
+        x1, y1, x2, y2 = map(float, win)
+        sw = max(1.0, x2 - x1)
+        sh = max(1.0, y2 - y1)
+        W = float(getattr(ws, "ann_orig_w", 1) or 1)
+        H = float(getattr(ws, "ann_orig_h", 1) or 1)
+
+        # Same concept as Detection: if full map is visible, keep/reload the small overview.
+        full_fraction = max(sw / max(1.0, W), sh / max(1.0, H))
+        if full_fraction > 0.92 and getattr(ws, "ann_preview_viewport_mode", False):
+            img, ow, oh = _load_detection_overview(path)
+            ws.ann_preview = img
+            ws.ann_orig_w = int(ow)
+            ws.ann_orig_h = int(oh)
+            ws.ann_preview_window = (0.0, 0.0, float(ow), float(oh))
+            ws.ann_preview_viewport_mode = False
+            _redraw_annotation_scene(ws, fit=True)
+            _safe_ws_log(ws, "Annotator overview reloaded.")
+            return
+        if full_fraction > 0.92:
+            return
+
+        view_w = max(256, int(view.viewport().width() or 1024))
+        view_h = max(256, int(view.viewport().height() or 768))
+        out_w = min(4096, max(512, view_w))
+        out_h = min(4096, max(512, view_h))
+        cx = (x1 + x2) / 2.0
+        cy = (y1 + y2) / 2.0
+
+        result = _load_detection_viewport(path, cx, cy, sw, sh, out_w, out_h)
+        if isinstance(result, tuple) and len(result) >= 7:
+            img, ow, oh, rx1, ry1, rsw, rsh = result[:7]
+            rx1 = float(rx1)
+            ry1 = float(ry1)
+            rx2 = rx1 + float(rsw)
+            ry2 = ry1 + float(rsh)
+        else:
+            img, ow, oh = result[:3]
+            rx1 = max(0.0, cx - sw / 2.0)
+            ry1 = max(0.0, cy - sh / 2.0)
+            rx2 = min(float(ow), rx1 + sw)
+            ry2 = min(float(oh), ry1 + sh)
+
+        ws.ann_preview = img
+        ws.ann_orig_w = int(ow)
+        ws.ann_orig_h = int(oh)
+        ws.ann_preview_window = (rx1, ry1, rx2, ry2)
+        ws.ann_preview_viewport_mode = True
+        _redraw_annotation_scene(ws, fit=False)
+        _safe_ws_log(ws, f"Annotator viewport loaded: source window {int(rx2-rx1)}x{int(ry2-ry1)} px -> preview {img.size}")
+
+    except Exception as exc:
+        _safe_ws_log(ws, "Annotator pyramid reload error: " + str(exc))
+
+
+def _fit_view(ws: Any) -> None:
+    try:
+        if not getattr(ws, "ann_imgs", None):
+            return
+        path = str(Path(ws.ann_imgs[ws.ann_i]))
+        img, W, H = _load_detection_overview(path)
+        ws.ann_preview = img
+        ws.ann_orig_w = int(W)
+        ws.ann_orig_h = int(H)
+        ws.ann_preview_window = (0.0, 0.0, float(W), float(H))
+        ws.ann_preview_viewport_mode = False
+        ws._ann_detection_like_last_img = path
+        _redraw_annotation_scene(ws, fit=True)
+    except Exception as exc:
+        _safe_ws_log(ws, "Annotator fit image failed: " + str(exc))
+
+
+def _patch_view_interaction(ws: Any) -> None:
+    view = getattr(ws, "annotator_view", None)
+    if view is None or getattr(view, "_mustatil_annotator_preview_v3_interaction", False):
+        return
+
+    try:
+        from PySide6.QtCore import Qt, QPointF
+    except Exception:
+        return
+
+    view._mustatil_annotator_preview_v3_interaction = True
+    view._mustatil_ann_panning = False
+    view._mustatil_ann_pan_start_view = None
+    view._mustatil_ann_pan_start_center = None
+    view._mustatil_ann_last_pan_reload = 0.0
+
+    old_mouse_press = view.mousePressEvent
+    old_mouse_move = view.mouseMoveEvent
+    old_mouse_release = view.mouseReleaseEvent
+    old_scroll = view.scrollContentsBy
+
+    def wheel_event(event):
+        try:
+            factor = 1.18 if event.angleDelta().y() > 0 else 1 / 1.18
+            view.scale(factor, factor)
+            _schedule_annotator_pyramid_reload(ws, 180)
+            event.accept()
+        except Exception:
+            pass
+
+    def mouse_press(event):
+        try:
+            if event.button() in (Qt.RightButton, Qt.MiddleButton) and getattr(view, "pixmap_item", None) is not None:
+                view._mustatil_ann_panning = True
+                view._mustatil_ann_pan_start_view = event.position()
+                view._mustatil_ann_pan_start_center = view.mapToScene(view.viewport().rect().center())
+                view.setCursor(Qt.ClosedHandCursor)
+                event.accept()
+                return
+        except Exception:
+            pass
+        # Left mouse remains the original annotation draw behaviour.
+        return old_mouse_press(event)
+
+    def mouse_move(event):
+        try:
+            if getattr(view, "_mustatil_ann_panning", False):
+                start_view = getattr(view, "_mustatil_ann_pan_start_view", None)
+                start_center = getattr(view, "_mustatil_ann_pan_start_center", None)
+                if start_view is not None and start_center is not None:
+                    dx = float(event.position().x() - start_view.x())
+                    dy = float(event.position().y() - start_view.y())
+                    sx = float(view.transform().m11()) or 1.0
+                    sy = float(view.transform().m22()) or 1.0
+                    view.centerOn(QPointF(float(start_center.x()) - dx / sx, float(start_center.y()) - dy / sy))
+                now = time.time()
+                if now - float(getattr(view, "_mustatil_ann_last_pan_reload", 0.0) or 0.0) > 0.35:
+                    view._mustatil_ann_last_pan_reload = now
+                    _schedule_annotator_pyramid_reload(ws, 180)
+                event.accept()
+                return
+        except Exception:
+            pass
+        return old_mouse_move(event)
+
+    def mouse_release(event):
+        try:
+            if getattr(view, "_mustatil_ann_panning", False) and event.button() in (Qt.RightButton, Qt.MiddleButton):
+                view._mustatil_ann_panning = False
+                view._mustatil_ann_pan_start_view = None
+                view._mustatil_ann_pan_start_center = None
+                view.unsetCursor()
+                _schedule_annotator_pyramid_reload(ws, 60)
+                event.accept()
+                return
+        except Exception:
+            pass
+        return old_mouse_release(event)
+
+    def scroll_contents_by(dx: int, dy: int):
+        try:
+            old_scroll(dx, dy)
+        except Exception:
+            pass
+        try:
+            _schedule_annotator_pyramid_reload(ws, 250)
+        except Exception:
+            pass
+
+    view.wheelEvent = wheel_event
+    view.mousePressEvent = mouse_press
+    view.mouseMoveEvent = mouse_move
+    view.mouseReleaseEvent = mouse_release
+    view.scrollContentsBy = scroll_contents_by
+
+    try:
+        view.setTransformationAnchor(view.AnchorUnderMouse)
+        view.setResizeAnchor(view.AnchorViewCenter)
+        view.setDragMode(view.NoDrag)
+    except Exception:
+        pass
+
+
+def _patch_annotator_methods(ws: Any) -> None:
+    if ws is None or id(ws) in _PATCHED_WORKSPACES:
+        return
+    _PATCHED_WORKSPACES.add(id(ws))
+
+    import types
+
+    old_draw = getattr(ws, "draw_current_annotation_qt", None)
+    old_add = getattr(ws, "add_annotation_box_from_scene_qt", None)
+    old_refresh = getattr(ws, "refresh_ann_list_qt", None)
+    old_showann = getattr(ws, "showann", None)
+
+    def draw_detection_like(self):
+        if not getattr(self, "ann_imgs", None):
+            return
+        try:
+            _ensure_class_state(self)
+            img_path = str(Path(self.ann_imgs[self.ann_i]))
+            image_changed = str(getattr(self, "_ann_detection_like_last_img", "") or "") != img_path
+
+            if image_changed or getattr(self, "ann_preview", None) is None:
+                img, W, H = _load_detection_overview(img_path)
+                self.ann_preview = img
+                self.ann_orig_w = int(W)
+                self.ann_orig_h = int(H)
+                self.ann_preview_w = int(W)
+                self.ann_preview_h = int(H)
+                self.ann_preview_sx = 1.0
+                self.ann_preview_sy = 1.0
+                self.ann_preview_window = (0.0, 0.0, float(W), float(H))
+                self.ann_preview_viewport_mode = False
+                self._ann_detection_like_last_img = img_path
+                _redraw_annotation_scene(self, fit=True)
+            else:
+                self.ann_preview_sx = 1.0
+                self.ann_preview_sy = 1.0
+                _redraw_annotation_scene(self, fit=False)
+
+            _sync_class_list(self)
+            try:
+                _update_existing_annotation_class_dropdowns(self)
+            except Exception:
+                pass
+
+        except Exception as exc:
+            _safe_ws_log(self, "Annotator Detection-like preview error: " + str(exc))
+            if callable(old_draw):
+                try:
+                    return old_draw()
+                except Exception:
+                    pass
+
+    def add_box_original_coords(self, x1: float, y1: float, x2: float, y2: float):
+        try:
+            if not getattr(self, "ann_imgs", None):
+                return
+            W = float(getattr(self, "ann_orig_w", 1.0) or 1.0)
+            H = float(getattr(self, "ann_orig_h", 1.0) or 1.0)
+            x1, x2 = sorted((max(0.0, min(W, float(x1))), max(0.0, min(W, float(x2)))))
+            y1, y2 = sorted((max(0.0, min(H, float(y1))), max(0.0, min(H, float(y2)))))
+            if (x2 - x1) < 3 or (y2 - y1) < 3:
+                return
+            cls = int(self.ann_cls.get())
+            self.ann_boxes.append([cls, x1, y1, x2, y2])
+            self.ann_selected = len(self.ann_boxes) - 1
+            self.refresh_ann_list_qt()
+            self.draw_current_annotation_qt()
+            self.saveann()
+            self.showann()
+        except Exception as exc:
+            _safe_ws_log(self, "Add annotation box error: " + str(exc))
+            if callable(old_add):
+                try:
+                    return old_add(x1, y1, x2, y2)
+                except Exception:
+                    pass
+
+    def refresh_list_with_class_names(self):
+        if callable(old_refresh):
+            try:
+                old_refresh()
+            except Exception:
+                pass
+        try:
+            lw = getattr(self, "ann_box_list_qt", None)
+            if lw is not None:
+                lw.clear()
+                for i, b in enumerate(getattr(self, "ann_boxes", []) or []):
+                    c, x1, y1, x2, y2 = b
+                    lw.addItem(f"{i+1:02d} | class {int(c)} {_class_name(self, int(c))} | x={x1:.0f} y={y1:.0f} w={x2-x1:.0f} h={y2-y1:.0f}")
+                if 0 <= getattr(self, "ann_selected", -1) < lw.count():
+                    lw.setCurrentRow(int(self.ann_selected))
+        except Exception:
+            pass
+        _sync_class_list(self)
+
+    def showann_with_classes(self):
+        try:
+            _ensure_class_state(self)
+        except Exception:
+            pass
+        result = old_showann() if callable(old_showann) else None
+        try:
+            _sync_class_list(self)
+        except Exception:
+            pass
+        return result
+
+    try:
+        ws.draw_current_annotation_qt = types.MethodType(draw_detection_like, ws)
+        ws.add_annotation_box_from_scene_qt = types.MethodType(add_box_original_coords, ws)
+        ws.refresh_ann_list_qt = types.MethodType(refresh_list_with_class_names, ws)
+        ws.showann = types.MethodType(showann_with_classes, ws)
+        ws._ann_preview_v3_patched = True
+        _safe_ws_log(ws, "Annotator preview patched: Detection-style overview + viewport pyramid reload.")
+    except Exception as exc:
+        _log("Could not patch Annotator methods: " + str(exc))
+
+
+def _find_left_controls_layout(page: Any):
+    try:
+        from PySide6.QtWidgets import QSplitter, QScrollArea
+        for splitter in page.findChildren(QSplitter):
+            if splitter.count() < 1:
+                continue
+            left = splitter.widget(0)
+            if isinstance(left, QScrollArea):
+                w = left.widget()
+                if w is not None and w.layout() is not None:
+                    return w.layout()
+            if left is not None and left.layout() is not None:
+                return left.layout()
+    except Exception:
+        pass
+    try:
+        return page.layout()
+    except Exception:
+        return None
+
+
+def _add_class(ws: Any, parent: Any) -> None:
+    try:
+        from PySide6.QtWidgets import QInputDialog
+        classes = _ensure_class_state(ws)
+        name, ok = QInputDialog.getText(parent, "Add class", "Class name:")
+        if not ok:
+            return
+        name = str(name or "").strip()
+        if not name:
+            return
+        if name in classes:
+            _safe_ws_log(ws, f"Class already exists: {name}")
+            return
+        classes.append(name)
+        _save_classes(ws, classes)
+        _sync_class_list(ws)
+        try:
+            _update_existing_annotation_class_dropdowns(ws, parent)
+        except Exception:
+            pass
+    except Exception as exc:
+        try:
+            ws.show_error("Add class", str(exc))
+        except Exception:
+            _safe_ws_log(ws, "Add class failed: " + str(exc))
+
+
+def _delete_selected_class(ws: Any, parent: Any) -> None:
+    try:
+        from PySide6.QtWidgets import QMessageBox
+        classes = _ensure_class_state(ws)
+        listw = getattr(ws, "mustatil_ann_class_list", None)
+        row = listw.currentRow() if listw is not None else -1
+        if not (0 <= row < len(classes)):
+            return
+
+        reply = QMessageBox.question(
+            parent,
+            "Delete class",
+            f"Delete class {row}: {classes[row]}?\n\n"
+            "YOLO labels store numeric class IDs. Deleting a class can make existing labels with this ID unknown.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        removed = classes.pop(row)
+        if not classes:
+            classes = _default_classes()
+        _save_classes(ws, classes)
+        _sync_class_list(ws)
+        try:
+            _update_existing_annotation_class_dropdowns(ws, parent)
+        except Exception:
+            pass
+        try:
+            ws.refresh_ann_list_qt()
+            ws.draw_current_annotation_qt()
+        except Exception:
+            pass
+        _safe_ws_log(ws, f"Deleted annotation class {row}: {removed}")
+    except Exception as exc:
+        try:
+            ws.show_error("Delete class", str(exc))
+        except Exception:
+            _safe_ws_log(ws, "Delete class failed: " + str(exc))
+
+
+def _add_manage_classes_box(page: Any, ws: Any) -> None:
+    if page is None or ws is None:
+        return
+    if getattr(page, "_mustatil_manage_classes_v3_added", False):
+        return
+
+    try:
+        from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget
+    except Exception:
+        return
+
+    layout = _find_left_controls_layout(page)
+    if layout is None:
+        return
+
+    box = QGroupBox("Manage classes")
+    box.setObjectName("MustatilAnnotatorManageClassesBox")
+    try:
+        box.setStyleSheet("QGroupBox { font-weight: bold; } QLabel { font-size: 8pt; } QPushButton { font-size: 8pt; padding: 2px 5px; min-height: 20px; } QListWidget { font-size: 8pt; }")
+    except Exception:
+        pass
+    bl = QVBoxLayout(box)
+    bl.setContentsMargins(6, 4, 6, 4)
+    bl.setSpacing(3)
+
+    info = QLabel(
+        "Create/delete classes. Select active class in the existing annotation dropdown."
+    )
+    info.setWordWrap(True)
+    bl.addWidget(info)
+
+    class_list = QListWidget()
+    class_list.setObjectName("MustatilAnnotatorClassList")
+    class_list.setMaximumHeight(72)
+    class_list.setMinimumHeight(54)
+    bl.addWidget(class_list)
+
+    row1 = QHBoxLayout()
+    btn_add = QPushButton("Add class")
+    btn_del = QPushButton("Delete selected class")
+    btn_add.setMaximumHeight(24)
+    btn_del.setMaximumHeight(24)
+    row1.addWidget(btn_add)
+    row1.addWidget(btn_del)
+    bl.addLayout(row1)
+
+    row2 = QHBoxLayout()
+    btn_refresh = QPushButton("Refresh classes")
+    btn_fit = QPushButton("Fit image")
+    btn_redraw = QPushButton("Redraw preview")
+    btn_refresh.setMaximumHeight(24)
+    btn_fit.setMaximumHeight(24)
+    btn_redraw.setMaximumHeight(24)
+    row2.addWidget(btn_refresh)
+    row2.addWidget(btn_fit)
+    row2.addWidget(btn_redraw)
+    bl.addLayout(row2)
+
+    ws.mustatil_ann_class_list = class_list
+
+    btn_add.clicked.connect(lambda: _add_class(ws, page))
+    btn_del.clicked.connect(lambda: _delete_selected_class(ws, page))
+    btn_refresh.clicked.connect(lambda: (_ensure_class_state(ws), _sync_class_list(ws)))
+    btn_fit.clicked.connect(lambda: _fit_view(ws))
+    btn_redraw.clicked.connect(lambda: (setattr(ws, "_ann_detection_like_last_img", None), ws.draw_current_annotation_qt()))
+
+    _sync_class_list(ws)
+    try:
+        _update_existing_annotation_class_dropdowns(ws, page)
+    except Exception:
+        pass
+
+    try:
+        layout.insertWidget(0, box)
+    except Exception:
+        layout.addWidget(box)
+
+    page._mustatil_manage_classes_v3_added = True
+    _safe_ws_log(ws, "Manage classes added. Active class stays in existing Annotator field.")
+
+
+
+# ---------------------------------------------------------------------------
+# v6 helper: strict update of Annotator class dropdown only
+# ---------------------------------------------------------------------------
+
+
+def _find_existing_annotation_class_widgets(ws: Any, page: Any = None) -> list:
+    """
+    Strict finder for the existing Annotator class selector only.
+    Avoids touching unrelated Device / model / service dropdowns.
+    """
+    widgets = []
+    seen = set()
+
+    try:
+        from PySide6.QtWidgets import QComboBox
+    except Exception:
+        return widgets
+
+    # Best source: Mustatil's Var binding for ann_cls.
+    try:
+        ann_cls = getattr(ws, "ann_cls", None)
+        for w in getattr(ann_cls, "_widgets", []) or []:
+            try:
+                if w is not None and isinstance(w, QComboBox) and id(w) not in seen:
+                    widgets.append(w)
+                    seen.add(id(w))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Fallback: Annotator page only, and only class-like combos.
+    if page is not None:
+        try:
+            for combo in page.findChildren(QComboBox):
+                if id(combo) in seen:
+                    continue
+
+                name = ""
+                try:
+                    name = str(combo.objectName() or "").lower()
+                except Exception:
+                    pass
+
+                # Hard reject unrelated dropdowns.
+                if any(bad in name for bad in [
+                    "device", "cuda", "model", "preset", "preview", "service",
+                    "map", "tile", "trainer", "pipeline", "satellite"
+                ]):
+                    continue
+
+                texts = []
+                try:
+                    texts = [str(combo.itemText(i) or "").lower() for i in range(combo.count())]
+                except Exception:
+                    texts = []
+                joined = " ".join(texts)
+
+                # Hard reject common device values even if objectName is empty.
+                if any(bad in joined for bad in [
+                    "cuda", "cpu", "directml", "rocm", "mps", "auto cuda", "device"
+                ]):
+                    continue
+
+                # Accept only if it is clearly annotation/class related.
+                class_like_name = any(k in name for k in ["ann_cls", "annotation_class", "class_combo", "class"])
+                class_like_values = (
+                    "mustatil" in joined or
+                    "false_positive" in joined or
+                    "false positive" in joined or
+                    joined.strip() in {"0 1", "0: mustatil 1: false_positive", "mustatil false_positive"}
+                )
+
+                if class_like_name or class_like_values:
+                    widgets.append(combo)
+                    seen.add(id(combo))
+        except Exception:
+            pass
+
+    return widgets
+
+
+def _update_existing_annotation_class_dropdowns(ws: Any, page: Any = None) -> None:
+    """
+    Push classes only into the real existing Annotator class dropdown.
+    This intentionally does not touch any other dropdown such as Device.
+    """
+    classes = _ensure_class_state(ws)
+
+    try:
+        cur = int(ws.ann_cls.get())
+    except Exception:
+        cur = 0
+
+    combos = _find_existing_annotation_class_widgets(ws, page)
+    for combo in combos:
+        try:
+            combo.blockSignals(True)
+            combo.clear()
+            for i, name in enumerate(classes):
+                combo.addItem(f"{i}: {name}", i)
+            if 0 <= cur < combo.count():
+                combo.setCurrentIndex(cur)
+            combo.blockSignals(False)
+
+            if not getattr(combo, "_mustatil_ann_class_connected", False):
+                def _on_existing_combo_changed(_idx=None, combo=combo, ws=ws):
+                    try:
+                        data = combo.currentData()
+                        if data is None:
+                            data = combo.currentIndex()
+                        ws.ann_cls.set(int(data))
+                    except Exception:
+                        pass
+                combo.currentIndexChanged.connect(_on_existing_combo_changed)
+                combo._mustatil_ann_class_connected = True
+        except Exception:
+            try:
+                combo.blockSignals(False)
+            except Exception:
+                pass
+
+    try:
+        _safe_ws_log(ws, f"Updated Annotator class dropdown only: {classes}")
+    except Exception:
+        pass
+
+
+def _patch_annotator_page(page: Any) -> None:
+    if page is None or id(page) in _PATCHED_PAGES:
+        return
+
+    ws = _workspace_from_widget(page)
+    if ws is None:
+        return
+
+    _PATCHED_PAGES.add(id(page))
+    _ensure_class_state(ws)
+    _patch_annotator_methods(ws)
+    _patch_view_interaction(ws)
+    _add_manage_classes_box(page, ws)
+
+    try:
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(50, ws.draw_current_annotation_qt)
+        QTimer.singleShot(100, lambda: (_sync_class_list(ws), _update_existing_annotation_class_dropdowns(ws, page)))
+    except Exception:
+        try:
+            ws.draw_current_annotation_qt()
+        except Exception:
+            pass
+
+    _safe_ws_log(ws, "Annotator Preview v6 active: Detection-style viewport/pyramid reload + Manage classes.")
+
+
+def _install_qtabwidget_hook() -> None:
+    global _PATCHED_QTABWIDGET, _ORIGINAL_QTAB_ADD
+
+    if _PATCHED_QTABWIDGET:
+        return
+
+    try:
+        from PySide6.QtWidgets import QTabWidget
+        from PySide6.QtCore import QTimer
+    except Exception as exc:
+        _log("Qt not available; hook not installed: " + str(exc))
+        return
+
+    _ORIGINAL_QTAB_ADD = QTabWidget.addTab
+
+    def addTab_patched(self, page, *args, **kwargs):
+        result = _ORIGINAL_QTAB_ADD(self, page, *args, **kwargs)
+        try:
+            label = ""
+            if args:
+                for a in reversed(args):
+                    if isinstance(a, str):
+                        label = a
+                        break
+            if not label:
+                try:
+                    label = self.tabText(int(result))
+                except Exception:
+                    label = ""
+            norm = str(label or "").strip().lower()
+            if "annotator" in norm or "annotation" in norm or "crop" in norm:
+                QTimer.singleShot(0, lambda p=page: _patch_annotator_page(p))
+                QTimer.singleShot(300, lambda p=page: _patch_annotator_page(p))
+                QTimer.singleShot(1200, lambda p=page: _patch_annotator_page(p))
+        except Exception as exc:
+            _log("addTab hook warning: " + str(exc))
+        return result
+
+    QTabWidget.addTab = addTab_patched
+    _PATCHED_QTABWIDGET = True
+    _log("QTabWidget.addTab hook installed for Annotator tab.")
+
+
+def mustatil_plugin_init():
+    _install_qtabwidget_hook()
+
+
+def register_plugin(app=None, main_window=None):
+    _install_qtabwidget_hook()
+    return True
+
+
+def init_plugin(app=None, main_window=None):
+    return register_plugin(app, main_window)
+
+
+def load_plugin(app=None, main_window=None):
+    return register_plugin(app, main_window)
+
+
+try:
+    _install_qtabwidget_hook()
+except Exception:
+    pass

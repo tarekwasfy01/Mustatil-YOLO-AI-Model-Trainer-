@@ -1,0 +1,839 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Mustatil plugin: Model filter + export everywhere
+
+Standalone companion plugin for Mustatil Detection / Satellite Detection.
+
+Adds a shared "Model filter / Export" box to all left-side model pages:
+  - YOLO / Original
+  - Google OWL
+  - Grounding DINO
+  - LAE-DINO
+
+It does NOT replace or move the right preview/map. It only patches filtering
+and adds export helpers.
+
+Features:
+  - model filter across Detection and Satellite Detection
+  - class filter
+  - hide class 1 / false_positive
+  - min confidence slider/spinbox
+  - optional Geo NMS
+  - export current model
+  - export all models separately
+"""
+from __future__ import annotations
+
+import json, math, os, re, time, traceback
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+_PATCHED_QTAB = False
+_ORIG_ADD = None
+_ORIG_INSERT = None
+_SCAN_TIMER = None
+_PATCHED_WS = set()
+_PATCHED_PAGES = set()
+
+
+def _log(msg: str):
+    try:
+        print("[Mustatil Model Filter Export] " + str(msg))
+    except Exception:
+        pass
+
+
+def _workspace_from_widget(widget: Any) -> Optional[Any]:
+    cur = widget
+    for _ in range(120):
+        if cur is None:
+            break
+        try:
+            if hasattr(cur, "tabs") and (hasattr(cur, "dets") or hasattr(cur, "satellite_detections")):
+                return cur
+        except Exception:
+            pass
+        try:
+            cur = cur.parentWidget()
+        except Exception:
+            try:
+                cur = cur.parent()
+            except Exception:
+                break
+    return None
+
+
+def _safe_name(name: Any) -> str:
+    s = str(name or "model").strip()
+    s = re.sub(r"[^A-Za-z0-9._-]+", "_", s)
+    return s[:90] or "model"
+
+
+def _get_var(v, default=""):
+    try:
+        if hasattr(v, "get"):
+            return v.get()
+    except Exception:
+        pass
+    return default
+
+
+def _item_get(obj: Any, keys: Iterable[str], default=None):
+    if isinstance(obj, dict):
+        for k in keys:
+            if k in obj:
+                return obj.get(k)
+        return default
+    for k in keys:
+        try:
+            if hasattr(obj, k):
+                return getattr(obj, k)
+        except Exception:
+            pass
+    return default
+
+
+def _item_cls(obj: Any) -> Optional[int]:
+    val = _item_get(obj, ("cls", "class_id", "class", "category_id", "label_id"), None)
+    try:
+        if val is not None and str(val).strip() != "":
+            return int(float(val))
+    except Exception:
+        pass
+    lab = str(_item_get(obj, ("label", "class_name", "name", "status"), "") or "").lower().strip()
+    if lab in {"positive", "mustatil", "true_positive", "true positive"}:
+        return 0
+    if lab in {"false_positive", "false positive", "false-positive", "fp"}:
+        return 1
+    return None
+
+
+def _item_label(obj: Any) -> str:
+    return str(_item_get(obj, ("label", "class_name", "name", "status"), "") or "")
+
+
+def _item_score(obj: Any) -> float:
+    v = _item_get(obj, ("confidence", "conf", "score", "probability"), 0.0)
+    try:
+        f = float(v)
+        return 0.0 if math.isnan(f) else f
+    except Exception:
+        return 0.0
+
+
+def _bbox(obj: Any) -> Optional[Tuple[float, float, float, float]]:
+    for keys in [
+        ("x1", "y1", "x2", "y2"),
+        ("px_x1", "px_y1", "px_x2", "px_y2"),
+        ("bbox_px_x1", "bbox_px_y1", "bbox_px_x2", "bbox_px_y2"),
+        ("world_px_x1", "world_px_y1", "world_px_x2", "world_px_y2"),
+        ("left", "top", "right", "bottom"),
+    ]:
+        vals = [_item_get(obj, (k,), None) for k in keys]
+        if all(v is not None for v in vals):
+            try:
+                x1, y1, x2, y2 = [float(v) for v in vals]
+                if x2 < x1:
+                    x1, x2 = x2, x1
+                if y2 < y1:
+                    y1, y2 = y2, y1
+                return x1, y1, x2, y2
+            except Exception:
+                pass
+    raw = _item_get(obj, ("pixel_bbox", "bbox", "box"), None)
+    if raw is not None:
+        try:
+            vals = [float(p) for p in (raw.strip("[]() ").replace(";", ",").split(",") if isinstance(raw, str) else list(raw))[:4]]
+            x1, y1, x2, y2 = vals
+            if x2 < x1:
+                x1, x2 = x2, x1
+            if y2 < y1:
+                y1, y2 = y2, y1
+            return x1, y1, x2, y2
+        except Exception:
+            pass
+    return None
+
+
+def _iou(a, b) -> float:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1, ix2, iy2 = max(ax1, bx1), max(ay1, by1), min(ax2, bx2), min(ay2, by2)
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    aa = max(0, ax2 - ax1) * max(0, ay2 - ay1)
+    bb = max(0, bx2 - bx1) * max(0, by2 - by1)
+    den = aa + bb - inter
+    return 0.0 if den <= 0 else inter / den
+
+
+def _nms(items: Iterable[Any], thr: float) -> List[Any]:
+    data = list(items or [])
+    ordered = sorted(enumerate(data), key=lambda p: _item_score(p[1]), reverse=True)
+    kept = []
+    for idx, it in ordered:
+        b = _bbox(it)
+        if b is None:
+            kept.append((idx, it, b))
+            continue
+        cls = _item_cls(it)
+        model = _model_name(it)
+        suppress = False
+        for _, kit, kb in kept:
+            if kb is None:
+                continue
+            if _item_cls(kit) != cls:
+                continue
+            if _model_name(kit) != model:
+                continue
+            if _iou(b, kb) >= thr:
+                suppress = True
+                break
+        if not suppress:
+            kept.append((idx, it, b))
+    kept.sort(key=lambda p: p[0])
+    return [p[1] for p in kept]
+
+
+def _model_name(obj: Any) -> str:
+    # Detection Det object: .name is the model/weights name.
+    val = _item_get(obj, ("model", "model_name", "name", "backend", "source_model"), None)
+    if val is None or str(val).strip() == "":
+        slot = _item_get(obj, ("slot", "model_slot"), None)
+        if slot is not None:
+            try:
+                return f"model_{int(slot)+1}"
+            except Exception:
+                return f"model_{slot}"
+        return "unknown_model"
+    return str(val).strip()
+
+
+def _all_detection_items(ws) -> List[Any]:
+    return list(getattr(ws, "dets", []) or [])
+
+
+def _all_satellite_items(ws) -> List[Dict[str, Any]]:
+    return [dict(r) if isinstance(r, dict) else r for r in (getattr(ws, "satellite_detections", None) or getattr(ws, "sat_last_records", []) or [])]
+
+
+def _known_models(ws) -> List[str]:
+    out = []
+    for it in _all_detection_items(ws) + _all_satellite_items(ws):
+        m = _model_name(it)
+        if m and m not in out:
+            out.append(m)
+    # Helpful stable defaults even before first run.
+    for m in ["Google OWL", "Grounding DINO", "LAE-DINO"]:
+        if m not in out:
+            out.append(m)
+    return out
+
+
+def _known_classes(ws) -> Dict[int, str]:
+    out = {0: "positive / class 0", 1: "false_positive / class 1"}
+    for it in _all_detection_items(ws) + _all_satellite_items(ws):
+        cls = _item_cls(it)
+        if cls is None:
+            continue
+        lab = _item_label(it).strip() or out.get(int(cls), f"class {cls}")
+        out[int(cls)] = lab
+    return out
+
+
+def _selected_model(ws) -> Optional[str]:
+    val = getattr(ws, "mustatil_model_export_selected_model", None)
+    if val in (None, "", "__all__"):
+        return None
+    return str(val)
+
+
+def _selected_class(ws) -> Optional[int]:
+    val = getattr(ws, "mustatil_model_export_selected_class_id", None)
+    if val in (None, "", "__all__"):
+        return None
+    try:
+        return int(val)
+    except Exception:
+        return None
+
+
+def _apply_model_filters(items, ws) -> List[Any]:
+    model = _selected_model(ws)
+    cls_sel = _selected_class(ws)
+    min_conf = float(getattr(ws, "mustatil_model_export_min_conf", 0.0) or 0.0)
+    hide_fp = bool(getattr(ws, "mustatil_model_export_hide_fp", False))
+    out = []
+    for it in list(items or []):
+        if model is not None and _model_name(it) != model:
+            continue
+        cls = _item_cls(it)
+        lab = _item_label(it).lower()
+        if cls_sel is not None and cls != cls_sel:
+            continue
+        if hide_fp and (cls == 1 or lab in {"false_positive", "false positive", "false-positive", "fp"}):
+            continue
+        if _item_score(it) < min_conf:
+            continue
+        out.append(it)
+    if bool(getattr(ws, "mustatil_model_export_geo_nms_enabled", False)):
+        out = _nms(out, float(getattr(ws, "mustatil_model_export_geo_nms_iou", 0.35) or 0.35))
+    return out
+
+
+def _patch_workspace(ws):
+    if ws is None or id(ws) in _PATCHED_WS:
+        return
+    _PATCHED_WS.add(id(ws))
+    try:
+        old_visible = getattr(ws, "visible", None)
+        if callable(old_visible) and not getattr(ws, "_mustatil_model_export_visible_patched", False):
+            def visible_filtered(*a, **k):
+                return _apply_model_filters(old_visible(*a, **k), ws)
+            ws.visible = visible_filtered
+            ws._mustatil_model_export_visible_patched = True
+    except Exception as exc:
+        _log("visible patch failed: " + str(exc))
+    try:
+        old_sat = getattr(ws, "_satellite_visible_records", None)
+        if callable(old_sat) and not getattr(ws, "_mustatil_model_export_sat_visible_patched", False):
+            def sat_filtered(records=None, *a, **k):
+                return _apply_model_filters(old_sat(records, *a, **k), ws)
+            ws._satellite_visible_records = sat_filtered
+            ws._mustatil_model_export_sat_visible_patched = True
+    except Exception as exc:
+        _log("sat visible patch failed: " + str(exc))
+
+
+def _redraw(ws):
+    for call in (
+        lambda: ws.redraw(fit=False),
+        lambda: ws.redraw(),
+        lambda: ws.satellite_redraw_detection_overlay(),
+        lambda: ws.refresh_layers(),
+    ):
+        try:
+            call()
+        except Exception:
+            pass
+    try:
+        sig = getattr(getattr(ws, "signals", None), "sat_overlay_redraw_requested", None)
+        if sig is not None:
+            sig.emit(0)
+    except Exception:
+        pass
+
+
+def _default_export_base(ws, context: str) -> Path:
+    root_raw = str(_get_var(getattr(ws, "project", None), "") or "").strip()
+    if root_raw:
+        root = Path(root_raw).expanduser()
+    else:
+        img_raw = str(_get_var(getattr(ws, "image", None), "") or "").strip()
+        root = Path(img_raw).expanduser().parent if img_raw else Path.home()
+    out_dir = root / "exports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    return out_dir / f"{context}_by_model_{stamp}.gpkg"
+
+
+def _detection_to_features_fallback(items: List[Any]) -> List[Dict[str, Any]]:
+    feats = []
+    for i, d in enumerate(items, 1):
+        b = _bbox(d)
+        if b is None:
+            continue
+        x1,y1,x2,y2 = b
+        props = {
+            "id": i,
+            "model": _model_name(d),
+            "class_id": _item_cls(d) if _item_cls(d) is not None else -1,
+            "class_name": _item_label(d),
+            "confidence": _item_score(d),
+        }
+        feats.append({
+            "type": "Feature",
+            "properties": props,
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [x1,y1],[x2,y1],[x2,y2],[x1,y2],[x1,y1]
+                ]]
+            }
+        })
+    return feats
+
+
+def _export_detection_records(ws, items: List[Any], out_path: Path, layer: str):
+    if not items:
+        raise RuntimeError("No Detection records to export for this filter/model.")
+    if hasattr(ws, "_dets_to_features") and hasattr(ws, "_write_features_auto"):
+        feats = ws._dets_to_features(items)
+        return ws._write_features_auto(out_path, feats, layer=layer, log_fn=getattr(ws, "log", None))
+    feats = _detection_to_features_fallback(items)
+    out_path = out_path.with_suffix(".geojson")
+    out_path.write_text(json.dumps({"type":"FeatureCollection","features":feats}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out_path
+
+
+def _export_satellite_records(ws, items: List[Dict[str, Any]], out_path: Path, layer: str):
+    if not items:
+        raise RuntimeError("No Satellite records to export for this filter/model.")
+    # Mustatil's native satellite exporter uses a fixed layer name, which is fine.
+    if hasattr(ws, "_satellite_features_to_file"):
+        return ws._satellite_features_to_file([dict(r) for r in items], out_path)
+    # GeoJSON fallback
+    feats = []
+    for i, r in enumerate(items, 1):
+        props = dict(r)
+        poly = props.pop("polygon_lonlat", None)
+        if not poly:
+            west = props.get("bbox_lon_min")
+            east = props.get("bbox_lon_max")
+            south = props.get("bbox_lat_min")
+            north = props.get("bbox_lat_max")
+            if None in (west,east,south,north):
+                continue
+            poly = [(west,north),(east,north),(east,south),(west,south),(west,north)]
+        feats.append({
+            "type":"Feature",
+            "properties": props,
+            "geometry": {"type":"Polygon","coordinates":[[[float(a),float(b)] for a,b in poly]]}
+        })
+    out_path = out_path.with_suffix(".geojson")
+    out_path.write_text(json.dumps({"type":"FeatureCollection","features":feats}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return out_path
+
+
+def _export_current_model(ws, context: str):
+    model = _selected_model(ws)
+    if model is None:
+        raise RuntimeError("Choose a specific model first, or use 'Export all models separately'.")
+    base = _default_export_base(ws, context)
+    out = base.with_name(f"{base.stem}_{_safe_name(model)}{base.suffix}")
+    if context == "satellite":
+        items = _apply_model_filters(_all_satellite_items(ws), ws)
+        final = _export_satellite_records(ws, items, out, f"satellite_{_safe_name(model)}")
+    else:
+        items = _apply_model_filters(_all_detection_items(ws), ws)
+        final = _export_detection_records(ws, items, out, f"detection_{_safe_name(model)}")
+    try:
+        ws.log(f"Export current model finished: {model} -> {final}")
+    except Exception:
+        pass
+    return final
+
+
+def _export_all_models(ws, context: str):
+    base = _default_export_base(ws, context)
+    source = _all_satellite_items(ws) if context == "satellite" else _all_detection_items(ws)
+    # Respect class/hide/conf/nms but ignore selected model while grouping.
+    old_model = getattr(ws, "mustatil_model_export_selected_model", None)
+    exported = []
+    try:
+        setattr(ws, "mustatil_model_export_selected_model", None)
+        filtered = _apply_model_filters(source, ws)
+        groups: Dict[str, List[Any]] = {}
+        for it in filtered:
+            groups.setdefault(_model_name(it), []).append(it)
+        if not groups:
+            raise RuntimeError("No detections to export with the current filters.")
+        for model, items in groups.items():
+            out = base.with_name(f"{base.stem}_{_safe_name(model)}{base.suffix}")
+            if context == "satellite":
+                final = _export_satellite_records(ws, [dict(r) for r in items], out, f"satellite_{_safe_name(model)}")
+            else:
+                final = _export_detection_records(ws, list(items), out, f"detection_{_safe_name(model)}")
+            exported.append(str(final))
+            try:
+                ws.log(f"Exported {len(items)} {context} records for {model}: {final}")
+            except Exception:
+                pass
+    finally:
+        setattr(ws, "mustatil_model_export_selected_model", old_model)
+    return exported
+
+
+def _refresh_boxes(ws):
+    boxes = list(getattr(ws, "mustatil_model_export_boxes", []) or [])
+    models = _known_models(ws)
+    classes = _known_classes(ws)
+    for d in boxes:
+        try:
+            model_combo = d.get("model_combo")
+            class_combo = d.get("class_combo")
+            current_model = _selected_model(ws)
+            current_cls = _selected_class(ws)
+
+            model_combo.blockSignals(True)
+            model_combo.clear()
+            model_combo.addItem("All models", "__all__")
+            for m in models:
+                model_combo.addItem(m, m)
+            ix = 0
+            for i in range(model_combo.count()):
+                if model_combo.itemData(i) == (current_model or "__all__"):
+                    ix = i
+                    break
+            model_combo.setCurrentIndex(ix)
+            model_combo.blockSignals(False)
+
+            class_combo.blockSignals(True)
+            class_combo.clear()
+            class_combo.addItem("All classes", "__all__")
+            for cls in sorted(classes):
+                class_combo.addItem(f"Class {cls}: {classes[cls]}", int(cls))
+            ix = 0
+            for i in range(class_combo.count()):
+                if class_combo.itemData(i) == (current_cls if current_cls is not None else "__all__"):
+                    ix = i
+                    break
+            class_combo.setCurrentIndex(ix)
+            class_combo.blockSignals(False)
+        except Exception:
+            pass
+
+
+def _set_all_combos(ws, field: str, value: Any):
+    for d in list(getattr(ws, "mustatil_model_export_boxes", []) or []):
+        try:
+            combo = d.get(field)
+            combo.blockSignals(True)
+            for i in range(combo.count()):
+                if combo.itemData(i) == value:
+                    combo.setCurrentIndex(i)
+                    break
+            combo.blockSignals(False)
+        except Exception:
+            pass
+
+
+def _make_box(ws, context: str):
+    from PySide6.QtWidgets import (
+        QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton,
+        QCheckBox, QDoubleSpinBox
+    )
+
+    box = QGroupBox("Model filter / Export")
+    box.setObjectName(f"MustatilModelFilterExportBox_{context}")
+    lay = QVBoxLayout(box)
+    lay.setContentsMargins(8, 6, 8, 6)
+
+    row = QHBoxLayout()
+    row.addWidget(QLabel("Model:"))
+    model_combo = QComboBox()
+    row.addWidget(model_combo, 1)
+    lay.addLayout(row)
+
+    row = QHBoxLayout()
+    row.addWidget(QLabel("Class:"))
+    class_combo = QComboBox()
+    row.addWidget(class_combo, 1)
+    lay.addLayout(row)
+
+    row = QHBoxLayout()
+    row.addWidget(QLabel("Min conf:"))
+    min_conf = QDoubleSpinBox()
+    min_conf.setRange(0.0, 1.0)
+    min_conf.setDecimals(3)
+    min_conf.setSingleStep(0.01)
+    min_conf.setValue(float(getattr(ws, "mustatil_model_export_min_conf", 0.0) or 0.0))
+    row.addWidget(min_conf, 1)
+    lay.addLayout(row)
+
+    hide_fp = QCheckBox("Hide class 1 / false_positive")
+    hide_fp.setChecked(bool(getattr(ws, "mustatil_model_export_hide_fp", False)))
+    lay.addWidget(hide_fp)
+
+    geo = QCheckBox("Apply Geo NMS")
+    geo.setChecked(bool(getattr(ws, "mustatil_model_export_geo_nms_enabled", False)))
+    lay.addWidget(geo)
+
+    row = QHBoxLayout()
+    row.addWidget(QLabel("Geo NMS IoU:"))
+    iou = QDoubleSpinBox()
+    iou.setRange(0.01, 0.99)
+    iou.setDecimals(2)
+    iou.setSingleStep(0.05)
+    iou.setValue(float(getattr(ws, "mustatil_model_export_geo_nms_iou", 0.35) or 0.35))
+    row.addWidget(iou, 1)
+    lay.addLayout(row)
+
+    row = QHBoxLayout()
+    refresh = QPushButton("Refresh")
+    redraw = QPushButton("Redraw")
+    row.addWidget(refresh)
+    row.addWidget(redraw)
+    lay.addLayout(row)
+
+    row = QHBoxLayout()
+    exp_cur = QPushButton("Export current model")
+    exp_all = QPushButton("Export all models separately")
+    row.addWidget(exp_cur)
+    row.addWidget(exp_all)
+    lay.addLayout(row)
+
+    if not hasattr(ws, "mustatil_model_export_boxes"):
+        ws.mustatil_model_export_boxes = []
+    ws.mustatil_model_export_boxes.append({
+        "model_combo": model_combo,
+        "class_combo": class_combo,
+        "context": context,
+    })
+
+    def on_model(*_):
+        data = model_combo.currentData()
+        ws.mustatil_model_export_selected_model = None if data in (None, "__all__") else str(data)
+        _set_all_combos(ws, "model_combo", data)
+        _redraw(ws)
+
+    def on_class(*_):
+        data = class_combo.currentData()
+        try:
+            ws.mustatil_model_export_selected_class_id = None if data in (None, "__all__") else int(data)
+        except Exception:
+            ws.mustatil_model_export_selected_class_id = None
+        _set_all_combos(ws, "class_combo", data)
+        _redraw(ws)
+
+    def on_export_current():
+        try:
+            final = _export_current_model(ws, context)
+            try:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(box, "Export current model", "Exported:\n" + str(final))
+            except Exception:
+                pass
+        except Exception as exc:
+            try:
+                ws.show_error("Export current model", str(exc))
+            except Exception:
+                _log("export current failed: " + str(exc))
+
+    def on_export_all():
+        try:
+            exported = _export_all_models(ws, context)
+            try:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(box, "Export all models", "Exported:\n" + "\n".join(map(str, exported)))
+            except Exception:
+                pass
+        except Exception as exc:
+            try:
+                ws.show_error("Export all models", str(exc))
+            except Exception:
+                _log("export all failed: " + str(exc))
+
+    model_combo.currentIndexChanged.connect(on_model)
+    class_combo.currentIndexChanged.connect(on_class)
+    min_conf.valueChanged.connect(lambda *_: (setattr(ws, "mustatil_model_export_min_conf", float(min_conf.value())), _redraw(ws)))
+    hide_fp.toggled.connect(lambda state: (setattr(ws, "mustatil_model_export_hide_fp", bool(state)), _redraw(ws)))
+    geo.toggled.connect(lambda state: (setattr(ws, "mustatil_model_export_geo_nms_enabled", bool(state)), _redraw(ws)))
+    iou.valueChanged.connect(lambda *_: (setattr(ws, "mustatil_model_export_geo_nms_iou", float(iou.value())), _redraw(ws)))
+    refresh.clicked.connect(lambda: _refresh_boxes(ws))
+    redraw.clicked.connect(lambda: _redraw(ws))
+    exp_cur.clicked.connect(on_export_current)
+    exp_all.clicked.connect(on_export_all)
+
+    _refresh_boxes(ws)
+    return box
+
+
+def _append_box_to_widget(widget, ws, context: str):
+    try:
+        if widget is None:
+            return False
+        if widget.findChild(object, f"MustatilModelFilterExportBox_{context}") is not None:
+            return True
+    except Exception:
+        pass
+    try:
+        from PySide6.QtWidgets import QScrollArea, QVBoxLayout
+        target = widget
+        if isinstance(widget, QScrollArea):
+            target = widget.widget()
+        layout = target.layout() if target is not None else None
+        if layout is None:
+            layout = QVBoxLayout(target)
+        layout.insertWidget(max(0, layout.count() - 1), _make_box(ws, context))
+        return True
+    except Exception as exc:
+        _log("append box failed: " + str(exc))
+        return False
+
+
+def _patch_left_panels(page, context: str) -> bool:
+    ws = _workspace_from_widget(page)
+    if ws is None:
+        return False
+    _patch_workspace(ws)
+    try:
+        from PySide6.QtWidgets import QSplitter, QTabWidget
+        patched = False
+        # Prefer the left widget of the first real page splitter.
+        splitter = None
+        for sp in page.findChildren(QSplitter):
+            if sp.count() >= 2:
+                splitter = sp
+                break
+        if splitter is not None:
+            left = splitter.widget(0)
+            if isinstance(left, QTabWidget):
+                for i in range(left.count()):
+                    patched = _append_box_to_widget(left.widget(i), ws, context) or patched
+            else:
+                patched = _append_box_to_widget(left, ws, context) or patched
+
+        # Also patch any inner model-tab widget by name.
+        for tw in page.findChildren(QTabWidget):
+            try:
+                names = [str(tw.tabText(i)).strip().lower() for i in range(tw.count())]
+                if any(n in names for n in ["yolo / original", "google owl", "grounding dino", "lae-dino"]):
+                    for i in range(tw.count()):
+                        patched = _append_box_to_widget(tw.widget(i), ws, context) or patched
+            except Exception:
+                pass
+        if patched:
+            _refresh_boxes(ws)
+        return patched
+    except Exception as exc:
+        _log("patch left panels failed: " + str(exc))
+        traceback.print_exc()
+        return False
+
+
+def _scan_tabs(root=None):
+    try:
+        from PySide6.QtWidgets import QApplication, QTabWidget
+        widgets = []
+        if root is not None:
+            try:
+                widgets += root.findChildren(QTabWidget)
+            except Exception:
+                pass
+            try:
+                if isinstance(root, QTabWidget):
+                    widgets.append(root)
+            except Exception:
+                pass
+        app = QApplication.instance()
+        if app is not None:
+            for w in app.allWidgets():
+                try:
+                    if isinstance(w, QTabWidget):
+                        widgets.append(w)
+                except Exception:
+                    pass
+
+        seen = set()
+        for tw in widgets:
+            if id(tw) in seen:
+                continue
+            seen.add(id(tw))
+            for i in range(tw.count()):
+                label = str(tw.tabText(i) or "").strip().lower()
+                page = tw.widget(i)
+                if label == "detection":
+                    _patch_left_panels(page, "detection")
+                elif label == "satellite detection":
+                    _patch_left_panels(page, "satellite")
+    except Exception as exc:
+        _log("scan tabs failed: " + str(exc))
+
+
+def _install_hook():
+    global _PATCHED_QTAB, _ORIG_ADD, _ORIG_INSERT, _SCAN_TIMER
+    if _PATCHED_QTAB:
+        return
+    try:
+        from PySide6.QtWidgets import QTabWidget
+        from PySide6.QtCore import QTimer
+    except Exception as exc:
+        _log("Qt unavailable: " + str(exc))
+        return
+    _ORIG_ADD = QTabWidget.addTab
+    _ORIG_INSERT = QTabWidget.insertTab
+
+    def after(page, label):
+        try:
+            norm = str(label or "").strip().lower()
+            if norm == "detection":
+                QTimer.singleShot(350, lambda p=page: _patch_left_panels(p, "detection"))
+                QTimer.singleShot(1600, lambda p=page: _patch_left_panels(p, "detection"))
+            elif norm == "satellite detection":
+                QTimer.singleShot(350, lambda p=page: _patch_left_panels(p, "satellite"))
+                QTimer.singleShot(1600, lambda p=page: _patch_left_panels(p, "satellite"))
+            elif norm in {"yolo / original", "google owl", "grounding dino", "lae-dino"}:
+                QTimer.singleShot(350, lambda: _scan_tabs())
+        except Exception as exc:
+            _log("after hook warning: " + str(exc))
+
+    def addTab_patched(self, page, *args, **kwargs):
+        res = _ORIG_ADD(self, page, *args, **kwargs)
+        label = ""
+        for a in reversed(args):
+            if isinstance(a, str):
+                label = a
+                break
+        if not label:
+            try:
+                label = self.tabText(int(res))
+            except Exception:
+                pass
+        after(page, label)
+        return res
+
+    def insertTab_patched(self, index, page, *args, **kwargs):
+        res = _ORIG_INSERT(self, index, page, *args, **kwargs)
+        label = ""
+        for a in reversed(args):
+            if isinstance(a, str):
+                label = a
+                break
+        if not label:
+            try:
+                label = self.tabText(int(res))
+            except Exception:
+                pass
+        after(page, label)
+        return res
+
+    QTabWidget.addTab = addTab_patched
+    QTabWidget.insertTab = insertTab_patched
+    _PATCHED_QTAB = True
+
+    try:
+        _SCAN_TIMER = QTimer()
+        _SCAN_TIMER.setInterval(2500)
+        _SCAN_TIMER.timeout.connect(lambda: _scan_tabs())
+        _SCAN_TIMER.start()
+        QTimer.singleShot(500, lambda: _scan_tabs())
+        QTimer.singleShot(2500, lambda: _scan_tabs())
+    except Exception:
+        pass
+    _log("Model filter/export hook installed")
+
+
+def mustatil_plugin_init():
+    _install_hook()
+    _scan_tabs()
+
+
+def register_plugin(app=None, main_window=None):
+    _install_hook()
+    _scan_tabs(main_window or app)
+    return True
+
+
+def init_plugin(app=None, main_window=None):
+    return register_plugin(app, main_window)
+
+
+def load_plugin(app=None, main_window=None):
+    return register_plugin(app, main_window)
+
+
+try:
+    _install_hook()
+except Exception:
+    pass

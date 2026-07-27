@@ -1,0 +1,3495 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Mustatil Video Detection Page Plugin V13 - class colors + compact LAE-DINO
+
+Drop this file into Mustatil's mustatil_plugins folder.
+It patches QTabWidget.addTab/insertTab, waits until Mustatil creates the
+"Satellite Detection" tab, and inserts a new "Video Detection" tab directly
+right of it.
+
+Core features:
+  - left-side model tabs: YOLO, ONNX YOLO, OWLv2, Grounding DINO, LAE-DINO, SAM
+  - functional video detection worker for YOLO/ONNX via Ultralytics
+  - optional functional OWLv2 / Grounding DINO if transformers + models are available
+  - optional LAE-DINO bridge with spacious project import: Import from project + Config + Checkpoint
+  - non-blocking QThread worker
+  - right preview with boxes
+  - CSV export
+  - JSON export
+  - annotated MP4 export
+  - detected frame export
+  - frame exporter list showing saved/exported frames
+  - YOLO dataset export with data.yaml
+
+Notes:
+  - SAM is shown as a tab because it is part of the Mustatil model family, but SAM is not
+    an object detector by itself. It needs upstream boxes/masks; this page therefore keeps
+    it as a guarded hook for future SAM video segmentation.
+  - The plugin is conservative: it does not modify existing Detection/Satellite widgets.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import math
+import random
+import re
+import shutil
+import hashlib
+import os
+import sys
+import time
+import traceback
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+PLUGIN_NAME = "Mustatil Video Detection Page V13 Class Colors + Compact LAE-DINO"
+_VIDEO_TAB_LABEL = "Video Detect/Annotate"
+_VIDEO_TAB_OBJECT = "MustatilVideoDetectionPageV13"
+_PATCHED = False
+_CURRENT_ADD = None
+_CURRENT_INSERT = None
+_INSTALLED_TABWIDGETS = set()
+_RESCAN_TIMER = None
+_CLASS_PATCHED = False
+
+# Mustatil injects these globals when loading plugins. Keep safe fallbacks so
+# the file can also be syntax-checked outside Mustatil.
+try:
+    MUSTATIL_GLOBALS  # type: ignore[name-defined]
+except Exception:
+    MUSTATIL_GLOBALS = {}  # type: ignore[assignment]
+try:
+    MUSTATIL_PLUGIN_GLOBALS  # type: ignore[name-defined]
+except Exception:
+    MUSTATIL_PLUGIN_GLOBALS = {}  # type: ignore[assignment]
+
+
+def _log(msg: Any) -> None:
+    try:
+        print(f"[Mustatil Video Detection] {msg}")
+    except Exception:
+        pass
+
+
+def _qt() -> Dict[str, Any]:
+    """Return the exact Qt binding used by Mustatil if available.
+
+    Mustatil 5 uses PySide6 and injects its globals into plugins. Using those
+    classes first prevents a silent PyQt/PySide mismatch if another Qt binding
+    is installed in the same venv.
+    """
+    g = globals().get("MUSTATIL_GLOBALS", {}) or {}
+    needed_widgets = [
+        "QApplication", "QWidget", "QVBoxLayout", "QHBoxLayout", "QGridLayout", "QFormLayout",
+        "QLabel", "QPushButton", "QFileDialog", "QGroupBox", "QTabWidget", "QSplitter",
+        "QLineEdit", "QComboBox", "QSpinBox", "QDoubleSpinBox", "QCheckBox", "QTextEdit",
+        "QTableWidget", "QTableWidgetItem", "QHeaderView", "QProgressBar", "QMessageBox",
+        "QPlainTextEdit", "QScrollArea", "QSlider", "QSizePolicy",
+    ]
+    needed_core_gui = ["Qt", "QThread", "Signal", "QTimer", "QImage", "QPixmap"]
+    if all(k in g for k in needed_widgets) and "Qt" in g and "QTimer" in g:
+        out = {k: g[k] for k in needed_widgets if k in g}
+        out["Qt"] = g["Qt"]
+        out["QTimer"] = g["QTimer"]
+        out["QImage"] = g.get("QImage")
+        out["QPixmap"] = g.get("QPixmap")
+        out["QThread"] = g.get("QThread")
+        out["Signal"] = g.get("Signal")
+        if out.get("QThread") is not None and out.get("Signal") is not None and out.get("QImage") is not None and out.get("QPixmap") is not None:
+            return out
+
+    try:
+        from PySide6.QtCore import Qt, QThread, Signal, QTimer
+        from PySide6.QtGui import QImage, QPixmap
+        from PySide6.QtWidgets import (
+            QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
+            QLabel, QPushButton, QFileDialog, QGroupBox, QTabWidget, QSplitter,
+            QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QTextEdit,
+            QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar, QMessageBox,
+            QPlainTextEdit, QScrollArea, QSlider, QSizePolicy
+        )
+        return locals()
+    except Exception:
+        try:
+            from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QTimer
+            from PyQt6.QtGui import QImage, QPixmap
+            from PyQt6.QtWidgets import (
+                QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
+                QLabel, QPushButton, QFileDialog, QGroupBox, QTabWidget, QSplitter,
+                QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QTextEdit,
+                QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar, QMessageBox,
+                QPlainTextEdit, QScrollArea, QSlider, QSizePolicy
+            )
+            return locals()
+        except Exception:
+            from PyQt5.QtCore import Qt, QThread, pyqtSignal as Signal, QTimer
+            from PyQt5.QtGui import QImage, QPixmap
+            from PyQt5.QtWidgets import (
+                QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
+                QLabel, QPushButton, QFileDialog, QGroupBox, QTabWidget, QSplitter,
+                QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QTextEdit,
+                QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar, QMessageBox,
+                QPlainTextEdit, QScrollArea, QSlider, QSizePolicy
+            )
+            return locals()
+
+def _qt_keep_aspect(q: Dict[str, Any]) -> Any:
+    Qt = q["Qt"]
+    try:
+        return Qt.AspectRatioMode.KeepAspectRatio
+    except Exception:
+        return Qt.KeepAspectRatio
+
+
+def _qt_smooth(q: Dict[str, Any]) -> Any:
+    Qt = q["Qt"]
+    try:
+        return Qt.TransformationMode.SmoothTransformation
+    except Exception:
+        return Qt.SmoothTransformation
+
+def _qt_align_top_left(q: Dict[str, Any]) -> Any:
+    Qt = q["Qt"]
+    try:
+        return Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+    except Exception:
+        return Qt.AlignTop | Qt.AlignLeft
+
+
+def _qt_horizontal(q: Dict[str, Any]) -> Any:
+    Qt = q["Qt"]
+    try:
+        return Qt.Orientation.Horizontal
+    except Exception:
+        return Qt.Horizontal
+
+
+def _workspace_from_widget(widget: Any) -> Optional[Any]:
+    cur = widget
+    for _ in range(220):
+        if cur is None:
+            return None
+        try:
+            # MainWindow/Workspace markers from mustatil_qt_workspace.py
+            if hasattr(cur, "tabs") and (hasattr(cur, "log") or hasattr(cur, "run_task")):
+                return cur
+            if hasattr(cur, "satellite_detect_selected") or hasattr(cur, "_build_satellite_detection_tab"):
+                return cur
+        except Exception:
+            pass
+        try:
+            cur = cur.parentWidget()
+        except Exception:
+            try:
+                cur = cur.parent()
+            except Exception:
+                return None
+    return None
+
+
+def _emit_workspace(ws: Any, msg: str) -> None:
+    try:
+        if ws is not None and hasattr(ws, "log"):
+            ws.log("[Video Detection] " + str(msg))
+            return
+    except Exception:
+        pass
+    _log(msg)
+
+
+def _norm_label(text: Any) -> str:
+    return str(text or "").strip().lower().replace("&", "")
+
+
+def _tab_index_by_label(tw: Any, label: str) -> int:
+    want = _norm_label(label)
+    try:
+        for i in range(tw.count()):
+            if _norm_label(tw.tabText(i)) == want:
+                return i
+    except Exception:
+        pass
+    return -1
+
+
+def _has_tab(tw: Any, label: str) -> bool:
+    return _tab_index_by_label(tw, label) >= 0
+
+
+def _label_from_add_args(tw: Any, result: Any, args: Tuple[Any, ...]) -> str:
+    for a in reversed(args):
+        if isinstance(a, str):
+            return a
+    try:
+        return str(tw.tabText(int(result)))
+    except Exception:
+        return ""
+
+
+def _as_path_text(line: Any) -> str:
+    try:
+        return str(line.text()).strip().strip('"')
+    except Exception:
+        return ""
+
+
+def _set_line(line: Any, path: Any) -> None:
+    try:
+        line.setText(str(path))
+    except Exception:
+        pass
+
+
+def _ensure_dir(p: Any) -> Optional[Path]:
+    try:
+        s = str(p or "").strip().strip('"')
+        if not s:
+            return None
+        path = Path(s)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except Exception:
+        return None
+
+
+def _parse_labels(text: str, default: Optional[List[str]] = None) -> List[str]:
+    vals: List[str] = []
+    for part in str(text or "").replace(";", ",").replace("\n", ",").split(","):
+        p = part.strip().strip(".").strip()
+        if p:
+            vals.append(p)
+    return vals or (default or ["object"])
+
+
+def _safe_float(x: Any, default: float = 0.0) -> float:
+    try:
+        return float(x)
+    except Exception:
+        return float(default)
+
+
+def _safe_int(x: Any, default: int = 0) -> int:
+    try:
+        return int(x)
+    except Exception:
+        return int(default)
+
+
+def _class_color_rgb(label: Any, class_id: Any = None) -> Tuple[int, int, int]:
+    """Stable class color as RGB.
+
+    Mustatil video labels and detections use the same deterministic palette, so
+    one class keeps one color across manual drawing, preview, table rows and
+    annotated video export.
+    """
+    palette = [
+        (0, 220, 0),      # green
+        (255, 80, 80),    # red
+        (80, 170, 255),   # blue
+        (255, 190, 0),    # amber
+        (200, 90, 255),   # purple
+        (0, 220, 220),    # cyan
+        (255, 120, 0),    # orange
+        (140, 255, 90),   # lime
+        (255, 90, 200),   # pink
+        (180, 180, 255),  # lavender
+        (255, 255, 80),   # yellow
+        (80, 255, 170),   # mint
+    ]
+    try:
+        key_label = str(label or "").strip()
+        if key_label:
+            digest = hashlib.sha1(key_label.lower().encode("utf-8", "ignore")).hexdigest()
+            return palette[int(digest[:8], 16) % len(palette)]
+        if class_id is not None and str(class_id).strip() != "":
+            idx = abs(int(float(class_id))) % len(palette)
+            return palette[idx]
+    except Exception:
+        pass
+    try:
+        key = str(label or "object").strip().lower()
+        digest = hashlib.sha1(key.encode("utf-8", "ignore")).hexdigest()
+        return palette[int(digest[:8], 16) % len(palette)]
+    except Exception:
+        return palette[0]
+
+
+def _class_color_bgr(label: Any, class_id: Any = None) -> Tuple[int, int, int]:
+    r, g, b = _class_color_rgb(label, class_id)
+    return (b, g, r)
+
+
+def _qcolor_for_class(label: Any, class_id: Any = None, alpha: int = 255) -> Any:
+    r, g, b = _class_color_rgb(label, class_id)
+    try:
+        from PySide6.QtGui import QColor
+    except Exception:
+        try:
+            from PyQt6.QtGui import QColor
+        except Exception:
+            from PyQt5.QtGui import QColor  # type: ignore
+    try:
+        return QColor(int(r), int(g), int(b), int(alpha))
+    except TypeError:
+        return QColor(int(r), int(g), int(b))
+
+
+def _soft_class_bg(label: Any, class_id: Any = None) -> Any:
+    r, g, b = _class_color_rgb(label, class_id)
+    try:
+        from PySide6.QtGui import QColor
+    except Exception:
+        try:
+            from PyQt6.QtGui import QColor
+        except Exception:
+            from PyQt5.QtGui import QColor  # type: ignore
+    return QColor(int(30 + r * 0.20), int(30 + g * 0.20), int(30 + b * 0.20))
+
+
+def _apply_detection_item_color(item: Any, label: Any, class_id: Any = None) -> None:
+    try:
+        item.setBackground(_soft_class_bg(label, class_id))
+        try:
+            item.setForeground(_qcolor_for_class(label, class_id))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _sanitize_name(s: str) -> str:
+    out = []
+    for ch in str(s):
+        if ch.isalnum() or ch in "._-":
+            out.append(ch)
+        else:
+            out.append("_")
+    return "".join(out).strip("_") or "frame"
+
+
+def _plugin_dir() -> Path:
+    try:
+        return Path(__file__).resolve().parent
+    except Exception:
+        return Path.cwd()
+
+
+def _find_lae_runner() -> Tuple[Optional[Any], Optional[Any]]:
+    # Prefer already-loaded plugin modules registered by Mustatil.
+    try:
+        for _name, mod in dict(MUSTATIL_PLUGIN_GLOBALS).items():
+            try:
+                fn = getattr(mod, "_run_lae_on_pil", None)
+                if callable(fn):
+                    return mod, fn
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # Fallback: scan sys.modules.
+    for mod in list(sys.modules.values()):
+        try:
+            fn = getattr(mod, "_run_lae_on_pil", None)
+            if callable(fn):
+                return mod, fn
+        except Exception:
+            pass
+    return None, None
+
+
+def _qt_thread_class(q: Dict[str, Any]):
+    QThread = q["QThread"]
+    Signal = q["Signal"]
+
+    class VideoWorker(QThread):
+        status = Signal(str)
+        progress = Signal(int, int, str)
+        preview = Signal(object)       # BGR numpy array with drawn boxes
+        detections_batch = Signal(object)
+        finished_ok = Signal(bool, str)
+
+        def __init__(self, cfg: Dict[str, Any], ws: Any = None, parent: Any = None):
+            super().__init__(parent)
+            self.cfg = dict(cfg or {})
+            self.ws = ws
+            self.model_cache: Dict[str, Any] = {}
+            self.class_to_id: Dict[str, int] = {}
+            self.all_records: List[Dict[str, Any]] = []
+            self.last_preview_time = 0.0
+            self._pause_requested = False
+            self._pause_status_sent = False
+
+        def requestPause(self) -> None:
+            self._pause_requested = True
+            self._pause_status_sent = False
+
+        def requestResume(self) -> None:
+            self._pause_requested = False
+            self._pause_status_sent = False
+
+        def isPaused(self) -> bool:
+            return bool(self._pause_requested)
+
+        def _wait_if_paused(self) -> None:
+            while bool(self._pause_requested) and not self.isInterruptionRequested():
+                if not self._pause_status_sent:
+                    self._status("Detection paused. Press Resume to continue.")
+                    self._pause_status_sent = True
+                time.sleep(0.10)
+            self._pause_status_sent = False
+
+        def _status(self, msg: str) -> None:
+            try:
+                self.status.emit(str(msg))
+            except Exception:
+                pass
+
+        def _device(self) -> str:
+            raw = str(self.cfg.get("device", "auto") or "auto").strip().lower()
+            if raw in {"cpu", "cuda", "0", "cuda:0"}:
+                return "0" if raw == "cuda:0" else raw
+            if raw == "auto":
+                try:
+                    import torch
+                    return "0" if torch.cuda.is_available() else "cpu"
+                except Exception:
+                    return "cpu"
+            return raw or "cpu"
+
+        def _torch_device(self) -> str:
+            raw = str(self.cfg.get("device", "auto") or "auto").strip().lower()
+            if raw in {"cuda", "0", "cuda:0"}:
+                return "cuda:0"
+            if raw == "auto":
+                try:
+                    import torch
+                    return "cuda:0" if torch.cuda.is_available() else "cpu"
+                except Exception:
+                    return "cpu"
+            return "cpu"
+
+        def _class_id(self, label: str, fallback: int = 0) -> int:
+            label = str(label or "object")
+            if label in self.class_to_id:
+                return self.class_to_id[label]
+            if isinstance(fallback, int) and fallback >= 0 and fallback not in self.class_to_id.values():
+                self.class_to_id[label] = fallback
+                return fallback
+            next_id = 0
+            used = set(self.class_to_id.values())
+            while next_id in used:
+                next_id += 1
+            self.class_to_id[label] = next_id
+            return next_id
+
+        def _matches_class_filter(self, label: str) -> bool:
+            filters = _parse_labels(str(self.cfg.get("class_filter", "") or ""), [])
+            if not filters:
+                return True
+            low = str(label or "").lower()
+            return any(f.lower() in low or low in f.lower() for f in filters)
+
+        def _load_yolo(self) -> Any:
+            model_path = str(self.cfg.get("model_path", "") or "").strip().strip('"')
+            if not model_path:
+                raise RuntimeError("No YOLO/ONNX model path selected.")
+            key = "yolo:" + model_path
+            if key in self.model_cache:
+                return self.model_cache[key]
+            from ultralytics import YOLO
+            suffix = Path(model_path).suffix.lower()
+            if suffix == ".onnx":
+                model = YOLO(model_path, task="detect")
+            else:
+                model = YOLO(model_path)
+            self.model_cache[key] = model
+            self._status(f"YOLO model loaded: {Path(model_path).name}")
+            return model
+
+        def _detect_yolo(self, frame_bgr: Any) -> List[Dict[str, Any]]:
+            model = self._load_yolo()
+            conf = float(self.cfg.get("conf", 0.25))
+            iou = float(self.cfg.get("iou", 0.45))
+            imgsz = int(self.cfg.get("imgsz", 640))
+            device = self._device()
+            kwargs = dict(conf=conf, iou=iou, imgsz=imgsz, verbose=False)
+            try:
+                kwargs["batch"] = int(self.cfg.get("batch", 1) or 1)
+            except Exception:
+                pass
+            if device not in {"auto", ""}:
+                kwargs["device"] = device
+            results = model.predict(frame_bgr, **kwargs)
+            out: List[Dict[str, Any]] = []
+            if not results:
+                return out
+            res = results[0]
+            names = getattr(res, "names", None) or getattr(model, "names", {}) or {}
+            boxes = getattr(res, "boxes", None)
+            if boxes is None:
+                return out
+            try:
+                xyxy = boxes.xyxy.detach().cpu().numpy().tolist()
+                confs = boxes.conf.detach().cpu().numpy().tolist()
+                clss = boxes.cls.detach().cpu().numpy().astype(int).tolist()
+            except Exception:
+                xyxy, confs, clss = [], [], []
+            for box, score, cls_id in zip(xyxy, confs, clss):
+                if len(box) < 4:
+                    continue
+                label = str(names.get(int(cls_id), int(cls_id)) if isinstance(names, dict) else int(cls_id))
+                if not self._matches_class_filter(label):
+                    continue
+                out.append({
+                    "x1": float(box[0]), "y1": float(box[1]), "x2": float(box[2]), "y2": float(box[3]),
+                    "confidence": float(score), "class_id": self._class_id(label, int(cls_id)), "class_name": label,
+                    "model": str(self.cfg.get("backend_label", "YOLO")),
+                })
+            return out
+
+        def _load_owlv2(self) -> Tuple[Any, Any, str, str]:
+            model_id = str(self.cfg.get("open_model_id", "") or "google/owlv2-base-patch16-ensemble").strip()
+            device = self._torch_device()
+            key = f"owlv2:{model_id}:{device}"
+            if key in self.model_cache:
+                return self.model_cache[key]
+            import torch
+            from transformers import Owlv2ForObjectDetection, Owlv2Processor
+            proc = Owlv2Processor.from_pretrained(model_id)
+            model = Owlv2ForObjectDetection.from_pretrained(model_id).to(device)
+            model.eval()
+            self.model_cache[key] = (proc, model, device, model_id)
+            self._status(f"OWLv2 loaded: {model_id} on {device}")
+            return self.model_cache[key]
+
+        def _detect_owlv2(self, frame_bgr: Any) -> List[Dict[str, Any]]:
+            import cv2
+            import torch
+            from PIL import Image
+            labels = _parse_labels(str(self.cfg.get("prompt", "") or ""), ["object"])
+            proc, model, device, model_id = self._load_owlv2()
+            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            pil = Image.fromarray(rgb)
+            inputs = proc(text=[labels], images=pil, return_tensors="pt")
+            inputs = {k: (v.to(device) if hasattr(v, "to") else v) for k, v in inputs.items()}
+            with torch.no_grad():
+                outputs = model(**inputs)
+            target_sizes = torch.tensor([pil.size[::-1]], device=device)
+            processed = proc.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=float(self.cfg.get("conf", 0.15)))
+            out: List[Dict[str, Any]] = []
+            if not processed:
+                return out
+            r = processed[0]
+            for box, score, label_id in zip(r.get("boxes", []), r.get("scores", []), r.get("labels", [])):
+                li = int(label_id.detach().cpu().item() if hasattr(label_id, "detach") else label_id)
+                label = labels[li] if 0 <= li < len(labels) else str(li)
+                if not self._matches_class_filter(label):
+                    continue
+                xy = box.detach().cpu().tolist() if hasattr(box, "detach") else list(box)
+                sc = float(score.detach().cpu().item() if hasattr(score, "detach") else score)
+                if len(xy) >= 4 and xy[2] > xy[0] and xy[3] > xy[1]:
+                    out.append({"x1": float(xy[0]), "y1": float(xy[1]), "x2": float(xy[2]), "y2": float(xy[3]),
+                                "confidence": sc, "class_id": self._class_id(label, li), "class_name": label,
+                                "model": model_id})
+            return out
+
+        def _load_grounding_dino(self) -> Tuple[Any, Any, str, str]:
+            model_id = str(self.cfg.get("open_model_id", "") or "IDEA-Research/grounding-dino-tiny").strip()
+            device = self._torch_device()
+            key = f"gdino:{model_id}:{device}"
+            if key in self.model_cache:
+                return self.model_cache[key]
+            import torch
+            from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
+            proc = AutoProcessor.from_pretrained(model_id)
+            model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
+            model.eval()
+            self.model_cache[key] = (proc, model, device, model_id)
+            self._status(f"Grounding DINO loaded: {model_id} on {device}")
+            return self.model_cache[key]
+
+        def _detect_grounding_dino(self, frame_bgr: Any) -> List[Dict[str, Any]]:
+            import cv2
+            import torch
+            from PIL import Image
+            labels = _parse_labels(str(self.cfg.get("prompt", "") or ""), ["object"])
+            proc, model, device, model_id = self._load_grounding_dino()
+            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            pil = Image.fromarray(rgb)
+            prompt = ". ".join(labels)
+            if prompt and not prompt.endswith("."):
+                prompt += "."
+            inputs = proc(images=pil, text=prompt, return_tensors="pt")
+            inputs = {k: (v.to(device) if hasattr(v, "to") else v) for k, v in inputs.items()}
+            with torch.no_grad():
+                outputs = model(**inputs)
+            target_sizes = torch.tensor([pil.size[::-1]], device=device)
+            post = getattr(proc, "post_process_grounded_object_detection", None)
+            if post is None:
+                raise RuntimeError("Grounding DINO processor has no post_process_grounded_object_detection().")
+            input_ids = inputs.get("input_ids")
+            conf = float(self.cfg.get("conf", 0.25))
+            text_thr = float(self.cfg.get("text_threshold", 0.25))
+            attempts = [
+                lambda: post(outputs=outputs, input_ids=input_ids, threshold=conf, target_sizes=target_sizes),
+                lambda: post(outputs, input_ids, threshold=conf, target_sizes=target_sizes),
+                lambda: post(outputs=outputs, input_ids=input_ids, box_threshold=conf, text_threshold=text_thr, target_sizes=target_sizes),
+                lambda: post(outputs, input_ids, box_threshold=conf, text_threshold=text_thr, target_sizes=target_sizes),
+                lambda: post(outputs=outputs, box_threshold=conf, text_threshold=text_thr, target_sizes=target_sizes),
+                lambda: post(outputs, target_sizes=target_sizes, threshold=conf),
+            ]
+            processed = None
+            last_exc = None
+            for fn in attempts:
+                try:
+                    processed = fn()
+                    break
+                except TypeError as exc:
+                    last_exc = exc
+                    continue
+            if processed is None:
+                raise RuntimeError("Grounding DINO postprocess API mismatch: " + str(last_exc))
+            out: List[Dict[str, Any]] = []
+            if not processed:
+                return out
+            r = processed[0]
+            text_labels = r.get("text_labels", r.get("labels", []))
+            for box, score, raw_label in zip(r.get("boxes", []), r.get("scores", []), text_labels):
+                label = str(raw_label)
+                li = 0
+                low = label.lower()
+                for j, name in enumerate(labels):
+                    if name.lower() in low or low in name.lower():
+                        li, label = j, name
+                        break
+                if not self._matches_class_filter(label):
+                    continue
+                xy = box.detach().cpu().tolist() if hasattr(box, "detach") else list(box)
+                sc = float(score.detach().cpu().item() if hasattr(score, "detach") else score)
+                if len(xy) >= 4 and xy[2] > xy[0] and xy[3] > xy[1]:
+                    out.append({"x1": float(xy[0]), "y1": float(xy[1]), "x2": float(xy[2]), "y2": float(xy[3]),
+                                "confidence": sc, "class_id": self._class_id(label, li), "class_name": label,
+                                "model": model_id})
+            return out
+
+        def _detect_lae_dino(self, frame_bgr: Any) -> List[Dict[str, Any]]:
+            import cv2
+            from PIL import Image
+            _mod, fn = _find_lae_runner()
+            if fn is None:
+                raise RuntimeError("LAE-DINO runtime hook _run_lae_on_pil was not found. Keep your LAE-DINO existing-tab plugin active.")
+            labels = _parse_labels(str(self.cfg.get("prompt", "") or ""), ["mustatil", "false_positive"])
+            cfg = str(self.cfg.get("lae_config", "") or "").strip().strip('"')
+            weights = str(self.cfg.get("lae_weights", "") or "").strip().strip('"')
+            try:
+                for prefix in ("mustatil_lae_existing_v9", "mustatil_lae_existing_v8", "mustatil_lae"):
+                    setattr(self.ws, prefix + "_classes_text", ", ".join(labels))
+                    if cfg:
+                        setattr(self.ws, prefix + "_config", cfg)
+                    if weights:
+                        setattr(self.ws, prefix + "_weights", weights)
+                        setattr(self.ws, prefix + "_checkpoint", weights)
+                if cfg and weights:
+                    setattr(self.ws, "mustatil_lae_force_custom_model", True)
+                    setattr(self.ws, "mustatil_lae_custom_model_locked", True)
+            except Exception:
+                pass
+            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            pil = Image.fromarray(rgb)
+            local = fn(self.ws, pil.convert("RGB"), float(self.cfg.get("conf", 0.25)))
+            out: List[Dict[str, Any]] = []
+            for r in list(local or []):
+                try:
+                    label = str(r.get("label", r.get("class_name", "LAE-DINO")))
+                    if not self._matches_class_filter(label):
+                        continue
+                    cid = self._class_id(label, int(r.get("class_id", r.get("cls", 0)) or 0))
+                    out.append({
+                        "x1": float(r["x1"]), "y1": float(r["y1"]), "x2": float(r["x2"]), "y2": float(r["y2"]),
+                        "confidence": float(r.get("confidence", r.get("conf", r.get("score", 0.0))) or 0.0),
+                        "class_id": cid, "class_name": label, "model": str(weights or "LAE-DINO"),
+                    })
+                except Exception:
+                    pass
+            return out
+
+        def _detect_frame(self, frame_bgr: Any) -> List[Dict[str, Any]]:
+            backend = str(self.cfg.get("backend", "yolo"))
+            if backend in {"yolo", "onnx"}:
+                return self._detect_yolo(frame_bgr)
+            if backend == "owlv2":
+                return self._detect_owlv2(frame_bgr)
+            if backend == "grounding_dino":
+                return self._detect_grounding_dino(frame_bgr)
+            if backend == "lae_dino":
+                return self._detect_lae_dino(frame_bgr)
+            if backend == "sam":
+                raise RuntimeError("SAM is not a standalone object detector. Use YOLO/OWLv2/Grounding DINO/LAE-DINO first; SAM video mask refinement can be connected later.")
+            raise RuntimeError(f"Unknown video backend: {backend}")
+
+        def _draw_boxes(self, frame_bgr: Any, dets: List[Dict[str, Any]]) -> Any:
+            import cv2
+            out = frame_bgr.copy()
+            for d in dets:
+                try:
+                    x1, y1, x2, y2 = int(d["x1"]), int(d["y1"]), int(d["x2"]), int(d["y2"])
+                    label = str(d.get("class_name", d.get("label", "object")))
+                    conf = float(d.get("confidence", d.get("conf", 0.0)) or 0.0)
+                    color = _class_color_bgr(label, d.get("class_id", None))
+                    cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
+                    txt = f"{label} {conf:.2f}"
+                    ty = max(18, y1 - 7)
+                    cv2.putText(out, txt, (x1, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+                except Exception:
+                    pass
+            return out
+
+        def _write_csv_json(self) -> None:
+            csv_path = str(self.cfg.get("csv_path", "") or "").strip().strip('"')
+            json_path = str(self.cfg.get("json_path", "") or "").strip().strip('"')
+            fields = [
+                "video", "backend", "frame", "time_seconds", "class_id", "class_name", "confidence",
+                "x1", "y1", "x2", "y2", "width", "height", "model"
+            ]
+            if csv_path:
+                p = Path(csv_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with p.open("w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=fields)
+                    writer.writeheader()
+                    for r in self.all_records:
+                        writer.writerow({k: r.get(k, "") for k in fields})
+            if json_path:
+                p = Path(json_path)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with p.open("w", encoding="utf-8") as f:
+                    json.dump(self.all_records, f, indent=2, ensure_ascii=False)
+
+        def _save_yolo_frame(self, frame_bgr: Any, dets: List[Dict[str, Any]], stem: str, width: int, height: int) -> None:
+            yolo_dir = _ensure_dir(self.cfg.get("yolo_dir", ""))
+            if yolo_dir is None:
+                return
+            import cv2
+            img_dir = yolo_dir / "images"
+            lab_dir = yolo_dir / "labels"
+            img_dir.mkdir(parents=True, exist_ok=True)
+            lab_dir.mkdir(parents=True, exist_ok=True)
+            img_path = img_dir / f"{stem}.jpg"
+            lab_path = lab_dir / f"{stem}.txt"
+            cv2.imwrite(str(img_path), frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            lines = []
+            for d in dets:
+                try:
+                    cid = int(d.get("class_id", 0))
+                    x1 = max(0.0, min(float(width), float(d["x1"])))
+                    y1 = max(0.0, min(float(height), float(d["y1"])))
+                    x2 = max(0.0, min(float(width), float(d["x2"])))
+                    y2 = max(0.0, min(float(height), float(d["y2"])))
+                    bw, bh = max(0.0, x2 - x1), max(0.0, y2 - y1)
+                    if bw <= 1 or bh <= 1:
+                        continue
+                    xc = (x1 + x2) / 2.0 / float(width)
+                    yc = (y1 + y2) / 2.0 / float(height)
+                    ww = bw / float(width)
+                    hh = bh / float(height)
+                    lines.append(f"{cid} {xc:.8f} {yc:.8f} {ww:.8f} {hh:.8f}")
+                except Exception:
+                    pass
+            lab_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+            # Rewrite data.yaml every time; small and robust.
+            names_by_id: Dict[int, str] = {}
+            for name, cid in self.class_to_id.items():
+                names_by_id[int(cid)] = str(name)
+            if not names_by_id:
+                names_by_id = {0: "object"}
+            yaml_lines = ["path: .", "train: images", "val: images", "names:"]
+            for cid in sorted(names_by_id):
+                yaml_lines.append(f"  {cid}: {names_by_id[cid]}")
+            (yolo_dir / "data.yaml").write_text("\n".join(yaml_lines) + "\n", encoding="utf-8")
+
+        def run(self) -> None:
+            try:
+                import cv2
+            except Exception as exc:
+                self.finished_ok.emit(False, "OpenCV/cv2 is missing: " + str(exc))
+                return
+
+            video_path = str(self.cfg.get("video_path", "") or "").strip().strip('"')
+            if not video_path or not Path(video_path).exists():
+                self.finished_ok.emit(False, "Video file not found.")
+                return
+
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                self.finished_ok.emit(False, "Could not open video.")
+                return
+
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            start_frame = max(0, int(self.cfg.get("start_frame", 0) or 0))
+            end_frame = int(self.cfg.get("end_frame", -1) or -1)
+            if total > 0:
+                if end_frame < 0 or end_frame >= total:
+                    end_frame = total - 1
+                start_frame = min(start_frame, max(0, total - 1))
+                if end_frame < start_frame:
+                    end_frame = total - 1
+            every = max(1, int(self.cfg.get("every_n", 1) or 1))
+            include_empty = bool(self.cfg.get("include_empty", False))
+            export_raw_skips = bool(self.cfg.get("export_raw_skipped_frames", True))
+
+            writer = None
+            video_out = str(self.cfg.get("annotated_video_path", "") or "").strip().strip('"')
+            if video_out:
+                outp = Path(video_out)
+                outp.parent.mkdir(parents=True, exist_ok=True)
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                writer = cv2.VideoWriter(str(outp), fourcc, fps if fps > 0 else 25.0, (width, height))
+                if not writer.isOpened():
+                    writer = None
+                    self._status("Warning: annotated MP4 writer could not be opened; continuing without MP4 export.")
+
+            frames_dir = _ensure_dir(self.cfg.get("frames_dir", ""))
+            basename = _sanitize_name(Path(video_path).stem)
+            processed = 0
+            detected_frames = 0
+            started = time.time()
+            range_label = f"frames={total}" if total <= 0 else f"frames={total} | range={start_frame}-{end_frame}"
+            self._status(f"Video opened: {Path(video_path).name} | {width}x{height} | fps={fps:.2f} | {range_label}")
+
+            if start_frame > 0:
+                try:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+                except Exception:
+                    pass
+            frame_idx = start_frame - 1
+            range_total = (end_frame - start_frame + 1) if (total > 0 and end_frame >= start_frame) else total
+            while True:
+                if self.isInterruptionRequested():
+                    self._status("Stop requested.")
+                    break
+                self._wait_if_paused()
+                if self.isInterruptionRequested():
+                    self._status("Stop requested.")
+                    break
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                frame_idx += 1
+                if total > 0 and end_frame >= start_frame and frame_idx > end_frame:
+                    break
+                time_seconds = (float(frame_idx) / fps) if fps > 0 else 0.0
+                do_detect = (frame_idx % every == 0)
+                dets: List[Dict[str, Any]] = []
+                drawn = frame
+                if do_detect:
+                    try:
+                        dets = self._detect_frame(frame)
+                    except Exception as exc:
+                        raise RuntimeError(f"Detection failed at frame {frame_idx}: {exc}")
+                    processed += 1
+                    if dets:
+                        detected_frames += 1
+                    for d in dets:
+                        d["video"] = video_path
+                        d["backend"] = str(self.cfg.get("backend_label", self.cfg.get("backend", "")))
+                        d["frame"] = int(frame_idx)
+                        d["time_seconds"] = float(time_seconds)
+                        d["width"] = int(width)
+                        d["height"] = int(height)
+                        if "class_name" not in d:
+                            d["class_name"] = str(d.get("label", "object"))
+                        if "confidence" not in d:
+                            d["confidence"] = float(d.get("conf", d.get("score", 0.0)) or 0.0)
+                        if "class_id" not in d:
+                            d["class_id"] = self._class_id(str(d.get("class_name", "object")), 0)
+                    self.all_records.extend(dets)
+                    drawn = self._draw_boxes(frame, dets)
+
+                    stem = f"{basename}_frame_{frame_idx:08d}"
+                    if frames_dir is not None and dets:
+                        try:
+                            cv2.imwrite(str(frames_dir / f"{stem}.jpg"), drawn)
+                        except Exception:
+                            pass
+                    if dets or include_empty:
+                        self._save_yolo_frame(frame, dets, stem, width, height)
+                    try:
+                        if dets:
+                            self.detections_batch.emit(list(dets))
+                    except Exception:
+                        pass
+                elif writer is not None and not export_raw_skips:
+                    # If requested later, skipped frames could receive interpolated boxes/tracks.
+                    pass
+
+                if writer is not None:
+                    try:
+                        writer.write(drawn if do_detect else frame)
+                    except Exception:
+                        pass
+
+                now = time.time()
+                if do_detect or now - self.last_preview_time > 0.35:
+                    self.last_preview_time = now
+                    try:
+                        self.preview.emit(drawn if do_detect else frame)
+                    except Exception:
+                        pass
+
+                if frame_idx % max(1, every) == 0:
+                    rate = (frame_idx + 1) / max(0.001, time.time() - started)
+                    range_done = (frame_idx - start_frame + 1) if range_total else (frame_idx + 1)
+                    msg = f"frame {frame_idx + 1}/{total or '?'} | processed={processed} | detections={len(self.all_records)} | {rate:.1f} fps"
+                    try:
+                        self.progress.emit(range_done, range_total or total, msg)
+                    except Exception:
+                        pass
+
+            cap.release()
+            if writer is not None:
+                try:
+                    writer.release()
+                except Exception:
+                    pass
+            self._write_csv_json()
+            msg = f"Finished. Processed frames={processed}; detection records={len(self.all_records)}; frames with detections={detected_frames}."
+            self.finished_ok.emit(True, msg)
+
+    return VideoWorker
+
+
+def _build_video_page(ws: Any = None) -> Any:
+    q = _qt()
+    Qt = q["Qt"]
+    QWidget = q["QWidget"]
+    QVBoxLayout = q["QVBoxLayout"]
+    QHBoxLayout = q["QHBoxLayout"]
+    QGridLayout = q["QGridLayout"]
+    QFormLayout = q["QFormLayout"]
+    QLabel = q["QLabel"]
+    QPushButton = q["QPushButton"]
+    QFileDialog = q["QFileDialog"]
+    QGroupBox = q["QGroupBox"]
+    QTabWidget = q["QTabWidget"]
+    QSplitter = q["QSplitter"]
+    QLineEdit = q["QLineEdit"]
+    QComboBox = q["QComboBox"]
+    QSpinBox = q["QSpinBox"]
+    QDoubleSpinBox = q["QDoubleSpinBox"]
+    QCheckBox = q["QCheckBox"]
+    QTextEdit = q["QTextEdit"]
+    QTableWidget = q["QTableWidget"]
+    QTableWidgetItem = q["QTableWidgetItem"]
+    QHeaderView = q["QHeaderView"]
+    QProgressBar = q["QProgressBar"]
+    QMessageBox = q["QMessageBox"]
+    QScrollArea = q["QScrollArea"]
+    QSlider = q.get("QSlider")
+    QSizePolicy = q.get("QSizePolicy")
+    QImage = q["QImage"]
+    QPixmap = q["QPixmap"]
+
+    page = QWidget()
+    page.setObjectName(_VIDEO_TAB_OBJECT)
+    page._mustatil_video_worker = None  # type: ignore[attr-defined]
+    page._mustatil_video_records = []   # type: ignore[attr-defined]
+    page._mustatil_video_segments = []  # type: ignore[attr-defined]
+    page._mustatil_video_choices = []   # type: ignore[attr-defined]
+    page._mustatil_labelstudio_tasks = []  # type: ignore[attr-defined]
+    page._mustatil_video_exported_frames = []  # type: ignore[attr-defined]
+    page._mustatil_video_ws = ws        # type: ignore[attr-defined]
+
+    root_layout = QVBoxLayout(page)
+    root_layout.setContentsMargins(4, 4, 4, 4)
+
+    splitter = QSplitter(_qt_horizontal(q))
+    root_layout.addWidget(splitter, 1)
+
+    # ----------------------------- left controls -----------------------------
+    left = QWidget()
+    left_layout = QVBoxLayout(left)
+    left_layout.setContentsMargins(6, 6, 6, 6)
+
+    def mk_line(default: str = "") -> Any:
+        le = QLineEdit()
+        le.setText(default)
+        return le
+
+    def mk_spin(value: int, lo: int, hi: int, step: int = 1) -> Any:
+        sp = QSpinBox()
+        sp.setRange(lo, hi)
+        sp.setSingleStep(step)
+        sp.setValue(value)
+        return sp
+
+    def mk_dspin(value: float, lo: float, hi: float, step: float = 0.01) -> Any:
+        sp = QDoubleSpinBox()
+        sp.setRange(lo, hi)
+        sp.setSingleStep(step)
+        sp.setDecimals(3)
+        sp.setValue(value)
+        return sp
+
+    video_line = mk_line()
+    annotated_video_line = mk_line()
+    csv_line = mk_line()
+    json_line = mk_line()
+    frames_line = mk_line()
+    yolo_dir_line = mk_line()
+    review_dir_line = mk_line()
+
+    # Default outputs are filled when video is selected.
+    def suggest_outputs(video_path: str) -> None:
+        try:
+            vp = Path(video_path)
+            base = vp.with_suffix("")
+            if not _as_path_text(annotated_video_line):
+                _set_line(annotated_video_line, str(base) + "_mustatil_video_detections.mp4")
+            if not _as_path_text(csv_line):
+                _set_line(csv_line, str(base) + "_mustatil_video_detections.csv")
+            if not _as_path_text(json_line):
+                _set_line(json_line, str(base) + "_mustatil_video_detections.json")
+            if not _as_path_text(frames_line):
+                _set_line(frames_line, str(base) + "_detected_frames")
+            if not _as_path_text(yolo_dir_line):
+                _set_line(yolo_dir_line, str(base) + "_yolo_dataset")
+            if not _as_path_text(review_dir_line):
+                _set_line(review_dir_line, str(base) + "_review_frames")
+        except Exception:
+            pass
+
+    video_box = QGroupBox("Video input")
+    vf = QGridLayout(video_box)
+    vf.addWidget(QLabel("Video"), 0, 0)
+    vf.addWidget(video_line, 0, 1)
+    b_video = QPushButton("Browse")
+    vf.addWidget(b_video, 0, 2)
+    left_layout.addWidget(video_box)
+
+    project_box = QGroupBox("Project / tasks")
+    pf = QFormLayout(project_box)
+    project_name_line = mk_line("Mustatil Video Labeling Project")
+    task_status_combo = QComboBox(); task_status_combo.addItems(["unlabeled", "in_review", "accepted", "rejected", "skipped"])
+    pf.addRow("Project", project_name_line)
+    pf.addRow("Task status", task_status_combo)
+    left_layout.addWidget(project_box)
+
+    model_tabs = QTabWidget()
+    model_tabs.setObjectName("MustatilVideoDetectionModelTabs")
+    try:
+        model_tabs.setMaximumHeight(190)
+        model_tabs.setStyleSheet("QTabWidget::pane{margin-top:2px;} QTabBar::tab{padding:4px 7px; min-height:18px;}")
+        if QSizePolicy is not None:
+            model_tabs.setSizePolicy(QSizePolicy.Policy.Expanding if hasattr(QSizePolicy, "Policy") else QSizePolicy.Expanding,
+                                     QSizePolicy.Policy.Maximum if hasattr(QSizePolicy, "Policy") else QSizePolicy.Maximum)
+    except Exception:
+        pass
+    left_layout.addWidget(model_tabs)
+
+    # Per-backend controls
+    yolo_model_line = mk_line()
+    onnx_model_line = mk_line()
+    owl_model_line = mk_line("google/owlv2-base-patch16-ensemble")
+    owl_prompt_line = mk_line("mustatil, burial mound, mound, car, person")
+    gdino_model_line = mk_line("IDEA-Research/grounding-dino-tiny")
+    gdino_prompt_line = mk_line("mustatil, burial mound, mound, rectangular structure, vehicle")
+    gdino_text_thr = mk_dspin(0.25, 0.001, 1.0, 0.01)
+    lae_config_line = mk_line()
+    lae_weights_line = mk_line()
+    page._mustatil_video_lae_classes_text = "mustatil, false_positive"  # type: ignore[attr-defined]
+    page._mustatil_video_lae_project = ""  # type: ignore[attr-defined]
+
+    def add_file_row(form: Any, label: str, line: Any, filt: str) -> None:
+        row = QWidget()
+        rr = QHBoxLayout(row)
+        rr.setContentsMargins(0, 0, 0, 0)
+        rr.addWidget(line, 1)
+        btn = QPushButton("Browse")
+        rr.addWidget(btn)
+        def browse() -> None:
+            try:
+                fn, _ = QFileDialog.getOpenFileName(page, label, "", filt)
+                if fn:
+                    line.setText(fn)
+            except Exception:
+                pass
+        btn.clicked.connect(browse)
+        form.addRow(label, row)
+
+    # YOLO tab
+    yolo_tab = QWidget(); yf = QFormLayout(yolo_tab)
+    add_file_row(yf, "YOLO model .pt/.onnx", yolo_model_line, "YOLO models (*.pt *.onnx);;All files (*)")
+    hint = QLabel("Standard Ultralytics YOLO video detection. For normal .pt models use this tab.")
+    hint.setWordWrap(True); yf.addRow("", hint)
+    model_tabs.addTab(yolo_tab, "YOLO")
+
+    # ONNX tab
+    onnx_tab = QWidget(); of = QFormLayout(onnx_tab)
+    add_file_row(of, "ONNX model", onnx_model_line, "ONNX models (*.onnx);;YOLO models (*.pt *.onnx);;All files (*)")
+    hint = QLabel("ONNX-YOLO via Ultralytics. Good as a stable video runtime if the .onnx has been exported correctly.")
+    hint.setWordWrap(True); of.addRow("", hint)
+    model_tabs.addTab(onnx_tab, "ONNX YOLO")
+
+    # OWL tab
+    owl_tab = QWidget(); owlf = QFormLayout(owl_tab)
+    owlf.addRow("Model ID", owl_model_line)
+    owlf.addRow("Prompts/classes", owl_prompt_line)
+    hint = QLabel("Open-vocabulary detection on video frames. Needs transformers and downloads the selected model if not cached.")
+    hint.setWordWrap(True); owlf.addRow("", hint)
+    model_tabs.addTab(owl_tab, "OWL-ViT / OWLv2")
+
+    # Grounding DINO tab
+    gd_tab = QWidget(); gdf = QFormLayout(gd_tab)
+    gdf.addRow("Model ID", gdino_model_line)
+    gdf.addRow("Prompts/classes", gdino_prompt_line)
+    gdf.addRow("Text threshold", gdino_text_thr)
+    hint = QLabel("Text-guided detection on video frames. Needs transformers Grounding DINO support.")
+    hint.setWordWrap(True); gdf.addRow("", hint)
+    model_tabs.addTab(gd_tab, "Grounding DINO")
+
+    # LAE tab - compact but fully clickable: import button + two wide path rows.
+    # The model tab area is intentionally small, so avoid nested group boxes that
+    # squeeze or hide Browse buttons.
+    lae_tab = QWidget()
+    lae_tab.setObjectName("MustatilVideoLAEDINOCompactClickable")
+    lf = QGridLayout(lae_tab)
+    lf.setContentsMargins(6, 6, 6, 6)
+    lf.setHorizontalSpacing(6)
+    lf.setVerticalSpacing(5)
+
+    lae_import_btn = QPushButton("1 Import from project")
+    try:
+        lae_import_btn.setMinimumHeight(28)
+        lae_import_btn.setMaximumHeight(32)
+        lae_import_btn.setToolTip("Import LAE-DINO config and checkpoint from the current Mustatil project folder.")
+    except Exception:
+        pass
+    lf.addWidget(lae_import_btn, 0, 0, 1, 3)
+
+    def _make_lae_browse_button(title: str, line: Any, filt: str) -> Any:
+        btn = QPushButton("Browse")
+        try:
+            btn.setMinimumWidth(70)
+            btn.setMaximumWidth(82)
+            btn.setMinimumHeight(26)
+            btn.setMaximumHeight(30)
+        except Exception:
+            pass
+        def browse() -> None:
+            try:
+                fn, _ = QFileDialog.getOpenFileName(page, title, "", filt)
+                if fn:
+                    line.setText(fn)
+            except Exception:
+                pass
+        btn.clicked.connect(browse)
+        return btn
+
+    try:
+        lae_config_line.setPlaceholderText("Config file, e.g. .../config.py")
+        lae_weights_line.setPlaceholderText("Checkpoint, e.g. .../best.pth")
+        lae_config_line.setMinimumHeight(26)
+        lae_weights_line.setMinimumHeight(26)
+        lae_config_line.setMinimumWidth(220)
+        lae_weights_line.setMinimumWidth(220)
+    except Exception:
+        pass
+
+    lf.addWidget(QLabel("Config"), 1, 0)
+    lf.addWidget(lae_config_line, 1, 1)
+    lf.addWidget(_make_lae_browse_button("LAE-DINO config", lae_config_line, "LAE-DINO config (*.py *.json *.yaml *.yml);;All files (*)"), 1, 2)
+    lf.addWidget(QLabel("Checkpoint"), 2, 0)
+    lf.addWidget(lae_weights_line, 2, 1)
+    lf.addWidget(_make_lae_browse_button("LAE-DINO checkpoint", lae_weights_line, "LAE-DINO checkpoint (*.pth *.pt *.ckpt);;All files (*)"), 2, 2)
+
+    lae_hint = QLabel("LAE-DINO: import from project or select config + checkpoint manually.")
+    lae_hint.setWordWrap(True)
+    try:
+        lae_hint.setMaximumHeight(34)
+    except Exception:
+        pass
+    lf.addWidget(lae_hint, 3, 0, 1, 3)
+    try:
+        lf.setColumnStretch(1, 1)
+    except Exception:
+        pass
+
+    def _read_lae_project_classes(project: Path) -> List[str]:
+        for name in ("project.json", "mustatil_project.json", "classes.json", "data.yaml", "dataset.yaml"):
+            p = project / name
+            if not p.exists():
+                continue
+            try:
+                if p.suffix.lower() == ".json":
+                    data = json.loads(p.read_text(encoding="utf-8", errors="ignore"))
+                    classes = data.get("classes") or data.get("names") or data.get("labels")
+                    if isinstance(classes, dict):
+                        return [str(classes[k]) for k in sorted(classes, key=lambda x: int(x) if str(x).isdigit() else str(x)) if str(classes[k]).strip()]
+                    if isinstance(classes, list):
+                        return [str(x) for x in classes if str(x).strip()]
+                else:
+                    txt = p.read_text(encoding="utf-8", errors="ignore")
+                    names = []
+                    in_names = False
+                    for raw in txt.splitlines():
+                        line = raw.strip()
+                        if line.startswith("names:"):
+                            in_names = True
+                            rest = line.split(":", 1)[1].strip()
+                            if rest.startswith("[") and rest.endswith("]"):
+                                names = [x.strip().strip("'\"") for x in rest.strip("[]").split(",") if x.strip()]
+                                break
+                            continue
+                        if in_names:
+                            if line.startswith("-"):
+                                names.append(line[1:].strip().strip("'\""))
+                            elif line and not raw.startswith((" ", "	")):
+                                break
+                    if names:
+                        return [n for n in names if n]
+            except Exception:
+                continue
+        return ["mustatil", "false_positive"]
+
+    def _guess_lae_project_root() -> str:
+        candidates: List[str] = []
+        try:
+            if ws is not None:
+                for name in ("mustatil_lae_existing_v9_project", "mustatil_lae_existing_v8_project", "mustatil_lae_project", "project_dir", "project_folder", "project_path", "current_project_dir", "last_project_dir"):
+                    v = getattr(ws, name, None)
+                    if v:
+                        candidates.append(str(v))
+                for name in ("project", "form_project"):
+                    v = getattr(ws, name, None)
+                    if hasattr(v, "get"):
+                        try:
+                            candidates.append(str(v.get()))
+                        except Exception:
+                            pass
+                    elif v:
+                        candidates.append(str(v))
+        except Exception:
+            pass
+        for s in candidates:
+            try:
+                p = Path(s).expanduser()
+                if p.exists() and ((p / "project.json").exists() or (p / "lae_dino_dataset").exists() or (p / "images").exists()):
+                    return str(p)
+            except Exception:
+                pass
+        return ""
+
+    def _score_lae_checkpoint(path: Path) -> Tuple[int, float, str]:
+        s = str(path).replace("\\", "/").lower()
+        n = path.name.lower()
+        score = 500
+        if "best" in n:
+            score -= 80
+        if "epoch" in n or "iter" in n:
+            score -= 35
+        if "latest" in n:
+            score -= 20
+        if "work_dirs" in s:
+            score -= 50
+        if "lae_dino_dataset" in s:
+            score -= 40
+        if "optimizer" in n or "ema" in n:
+            score += 80
+        try:
+            mtime = -float(path.stat().st_mtime)
+        except Exception:
+            mtime = 0.0
+        return (score, mtime, str(path))
+
+    def _find_lae_checkpoints(project: Path) -> List[Path]:
+        roots = [
+            project / "lae_dino_dataset" / "work_dirs" / "lae_dino_mustatil",
+            project / "lae_dino_dataset" / "work_dirs",
+            project / "lae_dino_dataset",
+            project / "weights",
+            project / "runs",
+            project,
+        ]
+        out: List[Path] = []
+        for root in roots:
+            if not root.exists():
+                continue
+            try:
+                for ext in ("*.pth", "*.pt", "*.ckpt"):
+                    out.extend([p for p in root.rglob(ext) if p.is_file()])
+            except Exception:
+                pass
+        seen = set(); uniq: List[Path] = []
+        for p in out:
+            k = str(p.resolve()).lower() if p.exists() else str(p).lower()
+            if k not in seen:
+                seen.add(k); uniq.append(p)
+        uniq.sort(key=_score_lae_checkpoint)
+        return uniq
+
+    def _score_lae_config(path: Path, project: Path) -> Tuple[int, float, str]:
+        s = str(path).replace("\\", "/").lower()
+        n = path.name.lower()
+        score = 500
+        if "lae_dino" in s:
+            score -= 80
+        if "train_from_project" in n:
+            score -= 70
+        if "mustatil" in n:
+            score -= 40
+        if "work_dirs" in s:
+            score -= 20
+        if "base" in n or "readme" in n or "verify" in n or "build_final" in n:
+            score += 120
+        try:
+            mtime = -float(path.stat().st_mtime)
+        except Exception:
+            mtime = 0.0
+        return (score, mtime, str(path))
+
+    def _find_lae_configs(project: Path) -> List[Path]:
+        roots = [project / "lae_dino_dataset", project / "lae_dino_dataset" / "work_dirs", project / "configs", project]
+        out: List[Path] = []
+        for root in roots:
+            if not root.exists():
+                continue
+            try:
+                for ext in ("*.py", "*.yaml", "*.yml", "*.json"):
+                    out.extend([p for p in root.rglob(ext) if p.is_file()])
+            except Exception:
+                pass
+        seen = set(); uniq: List[Path] = []
+        for p in out:
+            low = str(p).replace("\\", "/").lower()
+            if "__pycache__" in low or low.endswith("/project.json") or low.endswith("/classes.json"):
+                continue
+            k = str(p.resolve()).lower() if p.exists() else str(p).lower()
+            if k not in seen:
+                seen.add(k); uniq.append(p)
+        uniq.sort(key=lambda p: _score_lae_config(p, project))
+        return uniq
+
+    def import_lae_from_project() -> None:
+        try:
+            project = _guess_lae_project_root()
+            if not project:
+                project = QFileDialog.getExistingDirectory(page, "Select Mustatil / LAE-DINO project folder", "")
+            if not project:
+                set_status("LAE-DINO import cancelled.")
+                return
+            root = Path(project).expanduser()
+            cfgs = _find_lae_configs(root)
+            ckpts = _find_lae_checkpoints(root)
+            if not cfgs:
+                set_status("LAE-DINO import: no config found in project.")
+            else:
+                _set_line(lae_config_line, str(cfgs[0]))
+            if not ckpts:
+                set_status("LAE-DINO import: no checkpoint found in project.")
+            else:
+                _set_line(lae_weights_line, str(ckpts[0]))
+            classes = _read_lae_project_classes(root)
+            page._mustatil_video_lae_project = str(root)  # type: ignore[attr-defined]
+            page._mustatil_video_lae_classes_text = ", ".join(classes)  # type: ignore[attr-defined]
+            try:
+                if ws is not None:
+                    setattr(ws, "mustatil_lae_existing_v9_project", str(root))
+                    setattr(ws, "mustatil_lae_existing_v8_project", str(root))
+                    if cfgs:
+                        setattr(ws, "mustatil_lae_existing_v9_config", str(cfgs[0]))
+                        setattr(ws, "mustatil_lae_existing_v8_config", str(cfgs[0]))
+                        setattr(ws, "mustatil_lae_config", str(cfgs[0]))
+                    if ckpts:
+                        setattr(ws, "mustatil_lae_existing_v9_weights", str(ckpts[0]))
+                        setattr(ws, "mustatil_lae_existing_v8_weights", str(ckpts[0]))
+                        setattr(ws, "mustatil_lae_weights", str(ckpts[0]))
+                        setattr(ws, "mustatil_lae_checkpoint", str(ckpts[0]))
+                    setattr(ws, "mustatil_lae_force_custom_model", True)
+                    setattr(ws, "mustatil_lae_custom_model_locked", True)
+            except Exception:
+                pass
+            set_status(f"LAE-DINO project imported: config={'yes' if cfgs else 'no'}, checkpoint={'yes' if ckpts else 'no'}, classes={len(classes)}")
+        except Exception as exc:
+            set_status("LAE-DINO import failed: " + str(exc))
+
+    lae_import_btn.clicked.connect(import_lae_from_project)
+    model_tabs.addTab(lae_tab, "LAE-DINO")
+
+    # SAM tab
+    sam_tab = QWidget(); sf = QVBoxLayout(sam_tab)
+    sam_hint = QLabel("SAM is present as a future video mask/refinement hook. It is not a standalone detector; run YOLO/OWL/Grounding/LAE first for boxes.")
+    sam_hint.setWordWrap(True)
+    sf.addWidget(sam_hint); sf.addStretch(1)
+    model_tabs.addTab(sam_tab, "SAM")
+
+    settings_box = QGroupBox("Common detection settings")
+    cf = QFormLayout(settings_box)
+    device_combo = QComboBox(); device_combo.addItems(["auto", "cpu", "cuda", "0"])
+    conf_spin = mk_dspin(0.25, 0.001, 1.0, 0.01)
+    iou_spin = mk_dspin(0.45, 0.001, 1.0, 0.01)
+    imgsz_spin = mk_spin(640, 64, 4096, 32)
+    every_spin = mk_spin(1, 1, 10000, 1)
+    batch_spin = mk_spin(8, 1, 256, 1)
+    kpvis_spin = mk_dspin(0.50, 0.0, 1.0, 0.05)
+    start_frame_spin = mk_spin(0, 0, 2147483647, 1)
+    end_frame_spin = mk_spin(0, 0, 2147483647, 1)
+    end_frame_spin.setSpecialValueText("end")
+    class_filter_line = mk_line()
+    annotation_classes_line = mk_line("object, mustatil, false_positive")
+    include_empty_check = QCheckBox("include empty frames in YOLO dataset")
+    export_raw_skips_check = QCheckBox("write skipped frames raw to annotated MP4")
+    export_raw_skips_check.setChecked(True)
+    cf.addRow("Device", device_combo)
+    cf.addRow("Confidence", conf_spin)
+    cf.addRow("IoU", iou_spin)
+    cf.addRow("Image size", imgsz_spin)
+    cf.addRow("Detect every N frames", every_spin)
+    cf.addRow("Batch", batch_spin)
+    cf.addRow("Keypoint visibility", kpvis_spin)
+    cf.addRow("Start frame", start_frame_spin)
+    cf.addRow("End frame", end_frame_spin)
+    cf.addRow("Class filter", class_filter_line)
+    cf.addRow("Annotation labels", annotation_classes_line)
+    cf.addRow("", include_empty_check)
+    cf.addRow("", export_raw_skips_check)
+    left_layout.addWidget(settings_box)
+
+    output_box = QGroupBox("Exports")
+    out_f = QFormLayout(output_box)
+    def add_save_row(label: str, line: Any, filt: str, folder: bool = False) -> None:
+        row = QWidget(); rr = QHBoxLayout(row); rr.setContentsMargins(0, 0, 0, 0)
+        rr.addWidget(line, 1)
+        btn = QPushButton("Browse")
+        rr.addWidget(btn)
+        def browse() -> None:
+            try:
+                if folder:
+                    d = QFileDialog.getExistingDirectory(page, label, "")
+                    if d:
+                        line.setText(d)
+                else:
+                    fn, _ = QFileDialog.getSaveFileName(page, label, "", filt)
+                    if fn:
+                        line.setText(fn)
+            except Exception:
+                pass
+        btn.clicked.connect(browse)
+        out_f.addRow(label, row)
+    add_save_row("Annotated MP4", annotated_video_line, "MP4 (*.mp4);;All files (*)")
+    add_save_row("CSV", csv_line, "CSV (*.csv);;All files (*)")
+    add_save_row("JSON", json_line, "JSON (*.json);;All files (*)")
+    add_save_row("Detected frames", frames_line, "", folder=True)
+    add_save_row("YOLO dataset", yolo_dir_line, "", folder=True)
+    left_layout.addWidget(output_box)
+
+    buttons = QWidget(); br = QGridLayout(buttons); br.setContentsMargins(0, 0, 0, 0)
+    start_btn = QPushButton("Detect full video")
+    marked_btn = QPushButton("Detect marked range")
+    frame_detect_btn = QPushButton("Detect current frame")
+    pause_detect_btn = QPushButton("Pause")
+    resume_detect_btn = QPushButton("Resume")
+    stop_btn = QPushButton("Stop")
+    open_out_btn = QPushButton("Open output folder")
+    pause_detect_btn.setEnabled(False)
+    resume_detect_btn.setEnabled(False)
+    stop_btn.setEnabled(False)
+    br.addWidget(start_btn, 0, 0, 1, 2)
+    br.addWidget(marked_btn, 1, 0)
+    br.addWidget(frame_detect_btn, 1, 1)
+    br.addWidget(pause_detect_btn, 2, 0)
+    br.addWidget(resume_detect_btn, 2, 1)
+    br.addWidget(stop_btn, 3, 0)
+    br.addWidget(open_out_btn, 3, 1)
+    left_layout.addWidget(buttons)
+
+    progress = QProgressBar(); progress.setRange(0, 100)
+    left_layout.addWidget(progress)
+    status_label = QLabel("Ready.")
+    status_label.setWordWrap(True)
+    left_layout.addWidget(status_label)
+
+    log_box = QTextEdit(); log_box.setReadOnly(True); log_box.setMaximumHeight(130)
+    left_layout.addWidget(log_box)
+
+    left_scroll = QScrollArea(); left_scroll.setWidgetResizable(True); left_scroll.setWidget(left)
+    splitter.addWidget(left_scroll)
+
+    # ----------------------------- right preview -----------------------------
+    right = QWidget(); right_layout = QVBoxLayout(right); right_layout.setContentsMargins(6, 6, 6, 6)
+    class VideoAnnotatorLabel(QLabel):
+        def __init__(self, text: str = ""):
+            super().__init__(text)
+            self._drag_start = None
+            self._drag_current = None
+            self._mustatil_on_box_drawn = None
+            self._mustatil_mode_getter = None
+            self._mustatil_color_getter = None
+            self._source_w = 0
+            self._source_h = 0
+
+        def _mode(self) -> str:
+            try:
+                if self._mustatil_mode_getter:
+                    return str(self._mustatil_mode_getter())
+            except Exception:
+                pass
+            return "Review/Select"
+
+        def _map_to_image(self, pos):
+            try:
+                sw = float(getattr(self, "_source_w", 0) or 0)
+                sh = float(getattr(self, "_source_h", 0) or 0)
+                if sw <= 0 or sh <= 0:
+                    return None
+                lw = float(max(1, self.width()))
+                lh = float(max(1, self.height()))
+                scale = min(lw / sw, lh / sh)
+                dw = sw * scale; dh = sh * scale
+                ox = (lw - dw) / 2.0; oy = (lh - dh) / 2.0
+                try:
+                    px = float(pos.x()); py = float(pos.y())
+                except Exception:
+                    px = float(pos.position().x()); py = float(pos.position().y())
+                x = (px - ox) / scale; y = (py - oy) / scale
+                x = max(0.0, min(sw - 1.0, x)); y = max(0.0, min(sh - 1.0, y))
+                return x, y
+            except Exception:
+                return None
+
+        def mousePressEvent(self, event):
+            try:
+                if self._mode().lower().startswith("draw box"):
+                    self._drag_start = event.pos()
+                    self._drag_current = event.pos()
+                    self.update()
+                    return
+            except Exception:
+                pass
+            try: super().mousePressEvent(event)
+            except Exception: pass
+
+        def mouseMoveEvent(self, event):
+            try:
+                if self._drag_start is not None:
+                    self._drag_current = event.pos(); self.update(); return
+            except Exception:
+                pass
+            try: super().mouseMoveEvent(event)
+            except Exception: pass
+
+        def mouseReleaseEvent(self, event):
+            try:
+                if self._drag_start is not None:
+                    p1 = self._map_to_image(self._drag_start); p2 = self._map_to_image(event.pos())
+                    self._drag_start = None; self._drag_current = None; self.update()
+                    if p1 and p2 and self._mustatil_on_box_drawn:
+                        x1, y1 = p1; x2, y2 = p2
+                        if abs(x2 - x1) >= 3 and abs(y2 - y1) >= 3:
+                            self._mustatil_on_box_drawn(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+                    return
+            except Exception:
+                pass
+            try: super().mouseReleaseEvent(event)
+            except Exception: pass
+
+        def paintEvent(self, event):
+            try: super().paintEvent(event)
+            except Exception: pass
+            try:
+                if self._drag_start is not None and self._drag_current is not None:
+                    try:
+                        from PySide6.QtGui import QPainter, QPen, QColor
+                    except Exception:
+                        try:
+                            from PyQt6.QtGui import QPainter, QPen, QColor
+                        except Exception:
+                            from PyQt5.QtGui import QPainter, QPen, QColor  # type: ignore
+                    try:
+                        cr, cg, cb = self._mustatil_color_getter() if self._mustatil_color_getter else (0, 255, 0)
+                    except Exception:
+                        cr, cg, cb = (0, 255, 0)
+                    painter = QPainter(self); pen = QPen(QColor(int(cr), int(cg), int(cb))); pen.setWidth(2); painter.setPen(pen)
+                    x1 = min(self._drag_start.x(), self._drag_current.x()); y1 = min(self._drag_start.y(), self._drag_current.y())
+                    x2 = max(self._drag_start.x(), self._drag_current.x()); y2 = max(self._drag_start.y(), self._drag_current.y())
+                    painter.drawRect(x1, y1, x2 - x1, y2 - y1); painter.end()
+            except Exception:
+                pass
+
+    preview_label = VideoAnnotatorLabel("Video preview")
+    preview_label.setMinimumSize(640, 420)
+    try:
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    except Exception:
+        try:
+            preview_label.setAlignment(Qt.AlignCenter)
+        except Exception:
+            pass
+    preview_label.setStyleSheet("background:#111; color:#ddd; border:1px solid #444;")
+
+    # Small overlay in the top-left corner of the video preview.
+    # This is intentionally independent from the larger Label Studio panel: the
+    # user can select a class and immediately drag a box on the video. The new
+    # region is written into the bottom Regions/detections table with the
+    # current frame number.
+    preview_container = QWidget()
+    preview_grid = QGridLayout(preview_container)
+    preview_grid.setContentsMargins(0, 0, 0, 0)
+    preview_grid.setSpacing(0)
+    preview_grid.addWidget(preview_label, 0, 0)
+    preview_overlay = QWidget()
+    preview_overlay.setObjectName("MustatilVideoInlineLabelOverlay")
+    preview_overlay_layout = QHBoxLayout(preview_overlay)
+    preview_overlay_layout.setContentsMargins(6, 4, 6, 4)
+    preview_overlay_layout.setSpacing(4)
+    preview_draw_check = QCheckBox("Draw")
+    preview_draw_check.setChecked(True)
+    preview_class_combo = QComboBox()
+    preview_class_combo.setEditable(True)
+    preview_class_combo.addItems(["object", "mustatil", "false_positive"])
+    try:
+        preview_class_combo.setMaximumWidth(150)
+        preview_class_combo.setMinimumWidth(105)
+    except Exception:
+        pass
+    preview_overlay_layout.addWidget(QLabel("Class"))
+    preview_overlay_layout.addWidget(preview_class_combo)
+    preview_overlay_layout.addWidget(preview_draw_check)
+    try:
+        preview_overlay.setStyleSheet("QWidget#MustatilVideoInlineLabelOverlay{background:rgba(20,20,20,190); border:1px solid #555; border-radius:4px;} QLabel{color:#eee;} QCheckBox{color:#eee;}")
+        preview_overlay.setMaximumHeight(38)
+    except Exception:
+        pass
+    try:
+        preview_label._mustatil_color_getter = lambda: _class_color_rgb(str(preview_class_combo.currentText()).strip() or "object")
+    except Exception:
+        pass
+    try:
+        preview_grid.addWidget(preview_overlay, 0, 0, _qt_align_top_left(q))
+    except Exception:
+        preview_grid.addWidget(preview_overlay, 0, 0)
+    right_layout.addWidget(preview_container, 1)
+
+    # Scrollable lower menu: timeline, annotation tools and result tables.
+    # This keeps the video preview large while the whole control/menu area below
+    # can be scrolled vertically, similar to video editors with collapsible panels.
+    lower_menu_widget = QWidget()
+    lower_menu_layout = QVBoxLayout(lower_menu_widget)
+    lower_menu_layout.setContentsMargins(4, 4, 4, 4)
+    lower_menu_layout.setSpacing(6)
+    lower_menu_scroll = QScrollArea()
+    lower_menu_scroll.setWidgetResizable(True)
+    lower_menu_scroll.setWidget(lower_menu_widget)
+    try:
+        lower_menu_scroll.setMinimumHeight(220)
+        lower_menu_scroll.setMaximumHeight(430)
+    except Exception:
+        pass
+    right_layout.addWidget(lower_menu_scroll, 0)
+
+    # Video-review controls: lightweight editor-style timeline. These controls
+    # are independent from detection; they let the user inspect the video frame
+    # by frame, set a detection range, and export a current-frame snapshot.
+    timeline_box = QGroupBox("Timeline / frame review")
+    tl = QGridLayout(timeline_box)
+    frame_slider = QSlider(_qt_horizontal(q)) if QSlider is not None else None
+    frame_label = QLabel("Frame 0 / 0   Time 00:00.000")
+    play_btn = QPushButton("▶ Play")
+    pause_play_btn = QPushButton("⏸ Pause")
+    back10_btn = QPushButton("◀◀ 10")
+    prev_btn = QPushButton("◀ Frame")
+    next_btn = QPushButton("Frame ▶")
+    fwd10_btn = QPushButton("10 ▶▶")
+    mark_in_btn = QPushButton("Mark In")
+    mark_out_btn = QPushButton("Mark Out")
+    snapshot_btn = QPushButton("Save frame")
+    speed_combo = QComboBox(); speed_combo.addItems(["0.25x", "0.5x", "1x", "2x", "4x"])
+    try:
+        speed_combo.setCurrentText("1x")
+    except Exception:
+        pass
+    if frame_slider is not None:
+        frame_slider.setRange(0, 0)
+        tl.addWidget(frame_slider, 0, 0, 1, 7)
+    tl.addWidget(frame_label, 1, 0, 1, 2)
+    tl.addWidget(back10_btn, 1, 2)
+    tl.addWidget(prev_btn, 1, 3)
+    tl.addWidget(play_btn, 1, 4)
+    tl.addWidget(pause_play_btn, 1, 5)
+    tl.addWidget(next_btn, 1, 6)
+    tl.addWidget(fwd10_btn, 1, 7)
+    tl.addWidget(speed_combo, 1, 8)
+    tl.addWidget(snapshot_btn, 1, 9)
+    tl.addWidget(mark_in_btn, 2, 2)
+    tl.addWidget(mark_out_btn, 2, 3)
+    mark_range_label = QLabel("Marked range: none. 'Detect full video' ignores marks; 'Detect marked range' uses them.")
+    mark_range_label.setWordWrap(True)
+    tl.addWidget(mark_range_label, 2, 4, 1, 6)
+    timeline_hint = QLabel("Use the slider or frame buttons to review like a video editor. Mark In/Out creates an explicit range; full-video detection always scans the whole video.")
+    timeline_hint.setWordWrap(True)
+    tl.addWidget(timeline_hint, 2, 0, 1, 2)
+    lower_menu_layout.addWidget(timeline_box, 0)
+
+    review_tools_box = QGroupBox("SqueakPose-style review / frame export")
+    rtl = QGridLayout(review_tools_box)
+    send_current_btn = QPushButton("Send current")
+    send_low_btn = QPushButton("Send Low")
+    send_high_btn = QPushButton("Send High")
+    send_random_btn = QPushButton("Send Random")
+    save_cache_btn = QPushButton("Save cache")
+    load_cache_btn = QPushButton("Load cache")
+    clear_cache_btn = QPushButton("Clear table/cache")
+    export_n_spin = mk_spin(25, 1, 10000, 1)
+    skip_existing_check = QCheckBox("skip existing")
+    skip_existing_check.setChecked(True)
+    rtl.addWidget(QLabel("Export N"), 0, 0)
+    rtl.addWidget(export_n_spin, 0, 1)
+    rtl.addWidget(skip_existing_check, 0, 2)
+    rtl.addWidget(send_current_btn, 0, 3)
+    rtl.addWidget(send_low_btn, 0, 4)
+    rtl.addWidget(send_high_btn, 0, 5)
+    rtl.addWidget(send_random_btn, 0, 6)
+    rtl.addWidget(load_cache_btn, 1, 3)
+    rtl.addWidget(save_cache_btn, 1, 4)
+    rtl.addWidget(clear_cache_btn, 1, 5, 1, 2)
+    review_hint = QLabel("Send current/random/low/high exports frames into a review dataset. Low/High uses detection confidence, like SqueakPose's video reviewer.")
+    review_hint.setWordWrap(True)
+    rtl.addWidget(review_hint, 1, 0, 1, 3)
+    # SqueakPose-style review UI removed from visible layout in v11.
+    # Objects remain internal only to preserve compatibility with older helper functions.
+
+    frame_exporter_box = QGroupBox("Frame exporter list")
+    fel = QVBoxLayout(frame_exporter_box)
+    fel.setContentsMargins(6, 6, 6, 6)
+    fel.setSpacing(5)
+    exported_frames_table = QTableWidget(0, 6)
+    exported_frames_table.setHorizontalHeaderLabels(["Source", "Frame", "Reason", "Image", "Label", "Saved"])
+    try:
+        exported_frames_table.setMinimumHeight(110)
+        exported_frames_table.setMaximumHeight(185)
+        exported_frames_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch if hasattr(QHeaderView, "ResizeMode") else QHeaderView.Stretch)
+        exported_frames_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch if hasattr(QHeaderView, "ResizeMode") else QHeaderView.Stretch)
+    except Exception:
+        pass
+    fel.addWidget(exported_frames_table)
+    fe_buttons = QWidget()
+    feb = QHBoxLayout(fe_buttons)
+    feb.setContentsMargins(0, 0, 0, 0)
+    refresh_exported_frames_btn = QPushButton("Refresh frame list")
+    open_exported_frame_btn = QPushButton("Open selected")
+    open_frame_export_folder_btn = QPushButton("Open frame folder")
+    feb.addWidget(refresh_exported_frames_btn)
+    feb.addWidget(open_exported_frame_btn)
+    feb.addWidget(open_frame_export_folder_btn)
+    feb.addStretch(1)
+    fel.addWidget(fe_buttons)
+    frame_exporter_hint = QLabel("Shows frames saved by Send current/random/low/high and detected-frame exports. The list updates after export and can also be refreshed manually.")
+    frame_exporter_hint.setWordWrap(True)
+    fel.addWidget(frame_exporter_hint)
+    # Frame exporter list UI removed from visible layout in v11.
+
+    ls_tools_box = QGroupBox("Label Studio-style annotation / QA")
+    lsg = QGridLayout(ls_tools_box)
+    annotation_mode_combo = QComboBox(); annotation_mode_combo.addItems(["Review/Select", "Draw Box", "Frame Label", "Timeline Segment", "Video Choice"])
+    active_label_combo = QComboBox(); active_label_combo.setEditable(True); active_label_combo.addItems(["object", "mustatil", "false_positive"])
+    video_choice_combo = QComboBox(); video_choice_combo.setEditable(True); video_choice_combo.addItems(["Interesting", "Blurry", "Sharp", "No detection", "Needs review"])
+    track_id_spin = mk_spin(0, 0, 999999, 1)
+    comment_line = mk_line()
+    add_label_btn = QPushButton("Add label"); add_box_btn = QPushButton("Add full-frame box")
+    add_frame_label_btn = QPushButton("Add frame label"); add_segment_btn = QPushButton("Add timeline segment")
+    add_choice_btn = QPushButton("Add video choice"); accept_selected_btn = QPushButton("Accept selected")
+    reject_selected_btn = QPushButton("Reject selected"); delete_selected_btn = QPushButton("Delete selected")
+    import_ls_btn = QPushButton("Import LS JSON"); export_ls_btn = QPushButton("Export LS JSON")
+    save_project_btn = QPushButton("Save project"); load_project_btn = QPushButton("Load project")
+    lsg.addWidget(QLabel("Mode"), 0, 0); lsg.addWidget(annotation_mode_combo, 0, 1)
+    lsg.addWidget(QLabel("Active label"), 0, 2); lsg.addWidget(active_label_combo, 0, 3); lsg.addWidget(add_label_btn, 0, 4)
+    lsg.addWidget(QLabel("Track ID"), 1, 0); lsg.addWidget(track_id_spin, 1, 1)
+    lsg.addWidget(QLabel("Choice"), 1, 2); lsg.addWidget(video_choice_combo, 1, 3)
+    lsg.addWidget(QLabel("Comment"), 2, 0); lsg.addWidget(comment_line, 2, 1, 1, 3); lsg.addWidget(add_box_btn, 2, 4)
+    lsg.addWidget(add_frame_label_btn, 3, 0); lsg.addWidget(add_segment_btn, 3, 1); lsg.addWidget(add_choice_btn, 3, 2)
+    lsg.addWidget(accept_selected_btn, 3, 3); lsg.addWidget(reject_selected_btn, 3, 4)
+    lsg.addWidget(delete_selected_btn, 4, 0); lsg.addWidget(import_ls_btn, 4, 1); lsg.addWidget(export_ls_btn, 4, 2)
+    lsg.addWidget(save_project_btn, 4, 3); lsg.addWidget(load_project_btn, 4, 4)
+    ls_hint = QLabel("Label Studio-like workflow: import tasks, review predictions, draw boxes, classify frames/video, create timeline segments, accept/reject regions, and export LS JSON plus YOLO/CSV/MP4. You can also use the small Class selector in the top-left of the video preview and drag directly on the video; the label is added to the bottom list with the current frame.")
+    ls_hint.setWordWrap(True); lsg.addWidget(ls_hint, 5, 0, 1, 5)
+    lower_menu_layout.addWidget(ls_tools_box, 0)
+
+    table = QTableWidget(0, 10)
+    table.setHorizontalHeaderLabels(["Frame", "Time", "Model", "Class", "Conf", "x1", "y1", "x2/y2", "Status", "UID"])
+    try:
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    except Exception:
+        try:
+            table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        except Exception:
+            pass
+    try:
+        table.setColumnHidden(9, True)
+    except Exception:
+        pass
+    segments_table = QTableWidget(0, 6)
+    segments_table.setHorizontalHeaderLabels(["Start frame", "End frame", "Start", "End", "Label", "Comment"])
+    choices_table = QTableWidget(0, 5)
+    choices_table.setHorizontalHeaderLabels(["Scope", "Frame", "Choice/Label", "Status", "Comment"])
+    try:
+        segments_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        choices_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    except Exception:
+        try:
+            segments_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            choices_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        except Exception:
+            pass
+    bottom_tabs = QTabWidget()
+    bottom_tabs.addTab(table, "Regions / detections")
+    bottom_tabs.addTab(segments_table, "Timeline segments")
+    bottom_tabs.addTab(choices_table, "Choices / frame labels")
+    lower_menu_layout.addWidget(bottom_tabs, 1)
+    try:
+        lower_menu_layout.addStretch(1)
+    except Exception:
+        pass
+    splitter.addWidget(right)
+    try:
+        splitter.setSizes([470, 950])
+    except Exception:
+        pass
+
+    def append_log(msg: str) -> None:
+        try:
+            text = time.strftime("%H:%M:%S") + "  " + str(msg)
+            log_box.append(text)
+            _emit_workspace(ws, str(msg))
+        except Exception:
+            _log(msg)
+
+    def set_status(msg: str) -> None:
+        try:
+            status_label.setText(str(msg))
+        except Exception:
+            pass
+        append_log(str(msg))
+
+    def browse_video() -> None:
+        try:
+            fn, _ = QFileDialog.getOpenFileName(page, "Open video", "", "Videos (*.mp4 *.avi *.mov *.mkv *.webm *.m4v);;All files (*)")
+            if fn:
+                video_line.setText(fn)
+                suggest_outputs(fn)
+        except Exception as exc:
+            set_status("Browse video failed: " + str(exc))
+    b_video.clicked.connect(browse_video)
+
+    # ----------------------------- video review/player -----------------------------
+    page._mustatil_review_cap = None       # type: ignore[attr-defined]
+    page._mustatil_review_fps = 25.0       # type: ignore[attr-defined]
+    page._mustatil_review_total = 0        # type: ignore[attr-defined]
+    page._mustatil_review_current = 0      # type: ignore[attr-defined]
+    page._mustatil_review_w = 0            # type: ignore[attr-defined]
+    page._mustatil_review_h = 0            # type: ignore[attr-defined]
+    page._mustatil_review_playing = False  # type: ignore[attr-defined]
+    review_timer = q["QTimer"](page)
+
+    def _fmt_time(frame_idx: int) -> str:
+        try:
+            fps = float(getattr(page, "_mustatil_review_fps", 25.0) or 25.0)
+            seconds = max(0.0, float(frame_idx) / max(0.001, fps))
+            m = int(seconds // 60); s = seconds - m * 60
+            return f"{m:02d}:{s:06.3f}"
+        except Exception:
+            return "00:00.000"
+
+    def _speed_factor() -> float:
+        try:
+            return float(str(speed_combo.currentText()).replace("x", ""))
+        except Exception:
+            return 1.0
+
+    def _update_review_label() -> None:
+        try:
+            cur = int(getattr(page, "_mustatil_review_current", 0) or 0)
+            total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            frame_label.setText(f"Frame {cur} / {max(0,total-1)}   Time {_fmt_time(cur)}")
+        except Exception:
+            pass
+
+    def _update_mark_label() -> None:
+        try:
+            a = int(start_frame_spin.value())
+            b = int(end_frame_spin.value())
+            total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            if total > 0 and (b <= 0 or b >= total):
+                txt_b = f"end ({total-1})"
+            elif b > 0:
+                txt_b = str(b)
+            else:
+                txt_b = "end"
+            if b > 0 and b < a:
+                mark_range_label.setText(f"Marked range invalid: {a} - {b}. Mark Out should be after Mark In.")
+            else:
+                mark_range_label.setText(f"Marked range: {a} - {txt_b}. Full-video detection ignores this; marked-range detection uses it.")
+        except Exception:
+            pass
+
+    def open_video_for_review(path: str, jump_to_start: bool = True) -> bool:
+        try:
+            import cv2
+            p = str(path or "").strip().strip('"')
+            if not p or not Path(p).exists():
+                return False
+            old_cap = getattr(page, "_mustatil_review_cap", None)
+            try:
+                if old_cap is not None:
+                    old_cap.release()
+            except Exception:
+                pass
+            cap = cv2.VideoCapture(p)
+            if not cap.isOpened():
+                set_status("Review could not open video.")
+                return False
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
+            page._mustatil_review_cap = cap       # type: ignore[attr-defined]
+            page._mustatil_review_fps = fps       # type: ignore[attr-defined]
+            page._mustatil_review_total = total   # type: ignore[attr-defined]
+            if frame_slider is not None:
+                frame_slider.blockSignals(True)
+                frame_slider.setRange(0, max(0, total - 1))
+                frame_slider.blockSignals(False)
+            try:
+                end_frame_spin.setMaximum(max(0, total - 1))
+                start_frame_spin.setMaximum(max(0, total - 1))
+                if end_frame_spin.value() <= 0 and total > 0:
+                    end_frame_spin.setValue(max(0, total - 1))
+            except Exception:
+                pass
+            if jump_to_start:
+                load_review_cache(True)
+                show_frame(0)
+            _update_review_label()
+            _update_mark_label()
+            return True
+        except Exception as exc:
+            set_status("Open review video failed: " + str(exc))
+            return False
+
+    def detections_for_frame(frame_idx: int) -> List[Dict[str, Any]]:
+        try:
+            idx = int(frame_idx)
+            return [dict(r) for r in list(getattr(page, "_mustatil_video_records", []) or []) if int(r.get("frame", -1)) == idx]
+        except Exception:
+            return []
+
+    def draw_overlay_for_frame(frame_bgr: Any, frame_idx: int) -> Any:
+        try:
+            import cv2
+            out = frame_bgr.copy()
+            for d in detections_for_frame(int(frame_idx)):
+                x1 = int(float(d.get("x1", 0))); y1 = int(float(d.get("y1", 0)))
+                x2 = int(float(d.get("x2", 0))); y2 = int(float(d.get("y2", 0)))
+                label = str(d.get("class_name", d.get("label", "object")))
+                conf = float(d.get("confidence", d.get("conf", 0.0)) or 0.0)
+                color = _class_color_bgr(label, d.get("class_id", None))
+                cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(out, f"{label} {conf:.2f}", (x1, max(18, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+            return out
+        except Exception:
+            return frame_bgr
+
+    def show_frame(frame_idx: int) -> None:
+        try:
+            import cv2
+            p = _as_path_text(video_line)
+            cap = getattr(page, "_mustatil_review_cap", None)
+            if cap is None:
+                if not open_video_for_review(p, False):
+                    return
+                cap = getattr(page, "_mustatil_review_cap", None)
+            total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            if total > 0:
+                frame_idx = max(0, min(int(frame_idx), total - 1))
+            else:
+                frame_idx = max(0, int(frame_idx))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ok, frame = cap.read()
+            if not ok:
+                return
+            try:
+                page._mustatil_review_h, page._mustatil_review_w = frame.shape[:2]  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            page._mustatil_review_current = frame_idx  # type: ignore[attr-defined]
+            if frame_slider is not None and frame_slider.value() != frame_idx:
+                frame_slider.blockSignals(True)
+                frame_slider.setValue(frame_idx)
+                frame_slider.blockSignals(False)
+            update_preview(draw_overlay_for_frame(frame, frame_idx))
+            _update_review_label()
+        except Exception as exc:
+            append_log("Frame review failed: " + str(exc))
+
+    def step_frame(delta: int) -> None:
+        cur = int(getattr(page, "_mustatil_review_current", 0) or 0)
+        show_frame(cur + int(delta))
+
+    def pause_player() -> None:
+        try:
+            page._mustatil_review_playing = False  # type: ignore[attr-defined]
+            review_timer.stop()
+            play_btn.setText("▶ Play")
+        except Exception:
+            pass
+
+    def toggle_play() -> None:
+        try:
+            if getattr(page, "_mustatil_review_playing", False):
+                pause_player()
+                return
+            if getattr(page, "_mustatil_review_cap", None) is None:
+                open_video_for_review(_as_path_text(video_line), False)
+            fps = float(getattr(page, "_mustatil_review_fps", 25.0) or 25.0)
+            interval = int(max(8, 1000.0 / max(1.0, fps * _speed_factor())))
+            review_timer.setInterval(interval)
+            page._mustatil_review_playing = True  # type: ignore[attr-defined]
+            play_btn.setText("▶ Playing")
+            review_timer.start()
+        except Exception as exc:
+            set_status("Playback failed: " + str(exc))
+
+    def _play_tick() -> None:
+        try:
+            total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            cur = int(getattr(page, "_mustatil_review_current", 0) or 0)
+            if total > 0 and cur >= total - 1:
+                pause_player()
+                return
+            step_frame(1)
+        except Exception:
+            pass
+
+    def mark_in() -> None:
+        try:
+            start_frame_spin.setValue(int(getattr(page, "_mustatil_review_current", 0) or 0))
+            if int(end_frame_spin.value()) > 0 and int(end_frame_spin.value()) < int(start_frame_spin.value()):
+                end_frame_spin.setValue(int(start_frame_spin.value()))
+            _update_mark_label()
+            set_status(f"Mark In set to frame {start_frame_spin.value()}.")
+        except Exception:
+            pass
+
+    def mark_out() -> None:
+        try:
+            cur = int(getattr(page, "_mustatil_review_current", 0) or 0)
+            if cur < int(start_frame_spin.value()):
+                start_frame_spin.setValue(cur)
+            end_frame_spin.setValue(cur)
+            _update_mark_label()
+            set_status(f"Mark Out set to frame {end_frame_spin.value()}.")
+        except Exception:
+            pass
+
+    def _extract_frame_number_from_name(name: str) -> str:
+        try:
+            m = re.search(r"frame[_-]?(\d+)", str(name), re.IGNORECASE)
+            return str(int(m.group(1))) if m else ""
+        except Exception:
+            return ""
+
+    def _append_exported_frame_row(source: str, frame_idx: Any, reason: str, img_path: Any, label_path: Any = "") -> None:
+        try:
+            img = str(img_path or "")
+            lab = str(label_path or "")
+            r = exported_frames_table.rowCount()
+            exported_frames_table.insertRow(r)
+            saved = ""
+            try:
+                p = Path(img)
+                if p.exists():
+                    saved = time.strftime("%H:%M:%S", time.localtime(p.stat().st_mtime))
+            except Exception:
+                pass
+            vals = [str(source or ""), str(frame_idx if frame_idx is not None else ""), str(reason or ""), img, lab, saved]
+            for c, v in enumerate(vals):
+                exported_frames_table.setItem(r, c, QTableWidgetItem(v))
+            try:
+                page._mustatil_video_exported_frames.append({"source": source, "frame": frame_idx, "reason": reason, "image": img, "label": lab, "saved": saved})  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        except Exception as exc:
+            append_log("Could not add frame to exporter list: " + str(exc))
+
+    def refresh_exported_frames_list() -> None:
+        try:
+            exported_frames_table.setRowCount(0)
+            seen = set()
+            candidates: List[Tuple[str, Path, Optional[Path]]] = []
+
+            # Review dataset frames: review_frames/images + matching labels.
+            try:
+                base = Path(_as_path_text(review_dir_line) or "")
+                if base.exists():
+                    img_dir = base / "images"
+                    lab_dir = base / "labels"
+                    if img_dir.exists():
+                        for img in sorted(list(img_dir.glob("*.jpg")) + list(img_dir.glob("*.png")) + list(img_dir.glob("*.jpeg")), key=lambda p: p.stat().st_mtime if p.exists() else 0):
+                            lab = lab_dir / (img.stem + ".txt")
+                            candidates.append(("review", img, lab if lab.exists() else None))
+            except Exception:
+                pass
+
+            # Detected frames from the full video worker.
+            try:
+                fdir = Path(_as_path_text(frames_line) or "")
+                if fdir.exists():
+                    for img in sorted(list(fdir.glob("*.jpg")) + list(fdir.glob("*.png")) + list(fdir.glob("*.jpeg")), key=lambda p: p.stat().st_mtime if p.exists() else 0):
+                        candidates.append(("detected", img, None))
+            except Exception:
+                pass
+
+            for source, img, lab in candidates[-1000:]:
+                key = str(img.resolve()) if img.exists() else str(img)
+                if key in seen:
+                    continue
+                seen.add(key)
+                name = img.stem
+                frame_s = _extract_frame_number_from_name(name)
+                reason = ""
+                try:
+                    parts = name.split("_")
+                    if len(parts) >= 2 and parts[-1] and not parts[-1].isdigit():
+                        reason = parts[-1]
+                except Exception:
+                    pass
+                _append_exported_frame_row(source, frame_s, reason, img, lab or "")
+            set_status(f"Frame exporter list refreshed: {exported_frames_table.rowCount()} saved/exported frames.")
+        except Exception as exc:
+            set_status("Refresh frame exporter list failed: " + str(exc))
+
+    def _selected_exported_frame_path() -> str:
+        try:
+            row = exported_frames_table.currentRow()
+            if row < 0:
+                return ""
+            item = exported_frames_table.item(row, 3)
+            return str(item.text()) if item is not None else ""
+        except Exception:
+            return ""
+
+    def open_selected_exported_frame() -> None:
+        try:
+            fp = _selected_exported_frame_path()
+            if not fp:
+                set_status("No exported frame selected.")
+                return
+            p = Path(fp)
+            target = p if p.exists() else p.parent
+            if os.name == "nt":
+                os.startfile(str(target))  # type: ignore[attr-defined]
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(target)])
+        except Exception as exc:
+            set_status("Open selected frame failed: " + str(exc))
+
+    def open_frame_export_folder() -> None:
+        try:
+            folder = Path(_as_path_text(review_dir_line) or "")
+            if not folder.exists():
+                folder = Path(_as_path_text(frames_line) or "")
+            if not folder.exists():
+                folder = Path(_as_path_text(video_line)).parent
+            if os.name == "nt":
+                os.startfile(str(folder))  # type: ignore[attr-defined]
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(folder)])
+        except Exception as exc:
+            set_status("Open frame folder failed: " + str(exc))
+
+    def save_current_frame() -> None:
+        try:
+            import cv2
+            cap = getattr(page, "_mustatil_review_cap", None)
+            cur = int(getattr(page, "_mustatil_review_current", 0) or 0)
+            if cap is None:
+                if not open_video_for_review(_as_path_text(video_line), False):
+                    return
+                cap = getattr(page, "_mustatil_review_cap", None)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, cur)
+            ok, frame = cap.read()
+            if not ok:
+                set_status("Could not read current frame for snapshot.")
+                return
+            base = Path(_as_path_text(video_line)).with_suffix("")
+            out = str(base) + f"_frame_{cur:08d}.jpg"
+            cv2.imwrite(out, frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            _append_exported_frame_row("snapshot", cur, "snapshot", out, "")
+            set_status("Saved frame snapshot: " + out)
+        except Exception as exc:
+            set_status("Save frame failed: " + str(exc))
+
+    def _video_sig() -> Dict[str, Any]:
+        try:
+            p = Path(_as_path_text(video_line))
+            st = p.stat() if p.exists() else None
+            return {
+                "path": str(p.resolve()) if p.exists() else str(p),
+                "size": int(st.st_size) if st else 0,
+                "mtime": float(st.st_mtime) if st else 0.0,
+                "total": int(getattr(page, "_mustatil_review_total", 0) or 0),
+                "fps": float(getattr(page, "_mustatil_review_fps", 0.0) or 0.0),
+            }
+        except Exception:
+            return {}
+
+    def _cache_path() -> Optional[Path]:
+        try:
+            p = Path(_as_path_text(video_line))
+            base = p.with_suffix("") if p.exists() else Path(_as_path_text(json_line) or "video_review")
+            return Path(str(base) + "_mustatil_video_review_cache.json")
+        except Exception:
+            return None
+
+    def refresh_table_from_records() -> None:
+        try:
+            table.setRowCount(0)
+            records = sorted(list(getattr(page, "_mustatil_video_records", []) or []), key=lambda r: (int(r.get("frame", 0)), -float(r.get("confidence", 0.0) or 0.0)))
+            add_detections(records[:0])  # no-op keeps closure alive
+            max_rows = 5000
+            for d in records[-max_rows:]:
+                r = table.rowCount(); table.insertRow(r)
+                vals = [
+                    str(d.get("frame", "")),
+                    f"{float(d.get('time_seconds', 0.0)):.2f}",
+                    str(d.get("backend", d.get("model", ""))),
+                    str(d.get("class_name", d.get("label", ""))),
+                    f"{float(d.get('confidence', d.get('conf', 0.0))):.3f}",
+                    f"{float(d.get('x1', 0.0)):.1f}",
+                    f"{float(d.get('y1', 0.0)):.1f}",
+                    f"{float(d.get('x2', 0.0)):.1f}/{float(d.get('y2', 0.0)):.1f}",
+                    str(d.get("review_status", "")),
+                    str(d.get("uid", "")),
+                ]
+                for c, v in enumerate(vals):
+                    item = QTableWidgetItem(v)
+                    if c == 3:
+                        _apply_detection_item_color(item, d.get("class_name", d.get("label", "object")), d.get("class_id", None))
+                    table.setItem(r, c, item)
+        except Exception as exc:
+            append_log("Refresh table failed: " + str(exc))
+
+    def save_review_cache() -> None:
+        try:
+            fp = _cache_path()
+            if fp is None:
+                return
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "meta": {"video": _video_sig(), "backend": str(model_tabs.tabText(model_tabs.currentIndex()) or ""), "saved_at": time.time()},
+                "records": list(getattr(page, "_mustatil_video_records", []) or []),
+                "segments": list(getattr(page, "_mustatil_video_segments", []) or []),
+                "choices": list(getattr(page, "_mustatil_video_choices", []) or []),
+            }
+            fp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            set_status("Saved review cache: " + str(fp))
+        except Exception as exc:
+            set_status("Save cache failed: " + str(exc))
+
+    def load_review_cache(silent: bool = False) -> bool:
+        try:
+            fp = _cache_path()
+            if fp is None or not fp.exists():
+                if not silent:
+                    set_status("No review cache found.")
+                return False
+            data = json.loads(fp.read_text(encoding="utf-8"))
+            page._mustatil_video_records = list(data.get("records", []) or [])  # type: ignore[attr-defined]
+            page._mustatil_video_segments = list(data.get("segments", []) or [])  # type: ignore[attr-defined]
+            page._mustatil_video_choices = list(data.get("choices", []) or [])    # type: ignore[attr-defined]
+            refresh_table_from_records()
+            refresh_segments_table()
+            refresh_choices_table()
+            sync_label_combo()
+            if not silent:
+                set_status(f"Loaded review cache: {len(page._mustatil_video_records)} records")  # type: ignore[attr-defined]
+            return True
+        except Exception as exc:
+            if not silent:
+                set_status("Load cache failed: " + str(exc))
+            return False
+
+    def clear_review_data() -> None:
+        try:
+            page._mustatil_video_records = []  # type: ignore[attr-defined]
+            page._mustatil_video_segments = []  # type: ignore[attr-defined]
+            page._mustatil_video_choices = []   # type: ignore[attr-defined]
+            table.setRowCount(0)
+            segments_table.setRowCount(0)
+            choices_table.setRowCount(0)
+            set_status("Cleared video review table/data.")
+        except Exception as exc:
+            set_status("Clear failed: " + str(exc))
+
+    def _review_export_base() -> Path:
+        p = Path(_as_path_text(review_dir_line) or "")
+        if not str(p):
+            vp = Path(_as_path_text(video_line))
+            p = Path(str(vp.with_suffix("")) + "_review_frames")
+            _set_line(review_dir_line, str(p))
+        p.mkdir(parents=True, exist_ok=True)
+        (p / "images").mkdir(parents=True, exist_ok=True)
+        (p / "labels").mkdir(parents=True, exist_ok=True)
+        return p
+
+    def _write_review_data_yaml(base: Path) -> None:
+        try:
+            names = {}
+            for r in list(getattr(page, "_mustatil_video_records", []) or []):
+                try:
+                    cid = int(r.get("class_id", 0)); names[cid] = str(r.get("class_name", "object"))
+                except Exception:
+                    pass
+            if not names:
+                names = {0: "object"}
+            lines = ["path: .", "train: images", "val: images", "names:"]
+            for cid in sorted(names):
+                lines.append(f"  {cid}: {names[cid]}")
+            (base / "data.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception:
+            pass
+
+    def _export_frame_index(frame_idx: int, reason: str = "review") -> bool:
+        try:
+            import cv2
+            p = _as_path_text(video_line)
+            cap = getattr(page, "_mustatil_review_cap", None)
+            if cap is None:
+                if not open_video_for_review(p, False):
+                    return False
+                cap = getattr(page, "_mustatil_review_cap", None)
+            total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            idx = max(0, min(int(frame_idx), max(0, total - 1))) if total > 0 else max(0, int(frame_idx))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+            if not ok:
+                return False
+            base = _review_export_base()
+            stem = f"{_sanitize_name(Path(p).stem)}_frame_{idx:08d}_{_sanitize_name(reason)}"
+            img_path = base / "images" / f"{stem}.jpg"
+            lab_path = base / "labels" / f"{stem}.txt"
+            if bool(skip_existing_check.isChecked()) and img_path.exists():
+                return False
+            cv2.imwrite(str(img_path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            h, w = frame.shape[:2]
+            lines = []
+            for d in detections_for_frame(idx):
+                try:
+                    x1=max(0.0,min(float(w),float(d.get("x1",0)))); y1=max(0.0,min(float(h),float(d.get("y1",0))))
+                    x2=max(0.0,min(float(w),float(d.get("x2",0)))); y2=max(0.0,min(float(h),float(d.get("y2",0))))
+                    bw=max(0.0,x2-x1); bh=max(0.0,y2-y1)
+                    if bw <= 1 or bh <= 1:
+                        continue
+                    cid=int(d.get("class_id",0))
+                    lines.append(f"{cid} {((x1+x2)/2/w):.8f} {((y1+y2)/2/h):.8f} {(bw/w):.8f} {(bh/h):.8f}")
+                except Exception:
+                    pass
+            lab_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+            _write_review_data_yaml(base)
+            _append_exported_frame_row("review", idx, reason, img_path, lab_path)
+            return True
+        except Exception as exc:
+            append_log("Export frame failed: " + str(exc))
+            return False
+
+    def export_current_to_review() -> None:
+        idx = int(getattr(page, "_mustatil_review_current", 0) or 0)
+        ok = _export_frame_index(idx, "current")
+        set_status(("Exported" if ok else "Skipped/failed") + f" current frame {idx} to review dataset.")
+
+    def _frame_scores() -> List[Tuple[int, float]]:
+        groups: Dict[int, List[float]] = {}
+        for r in list(getattr(page, "_mustatil_video_records", []) or []):
+            try:
+                groups.setdefault(int(r.get("frame", 0)), []).append(float(r.get("confidence", 0.0) or 0.0))
+            except Exception:
+                pass
+        scored = []
+        for idx, vals in groups.items():
+            if vals:
+                scored.append((idx, sum(vals) / len(vals)))
+        return scored
+
+    def export_confidence_frames(high: bool) -> None:
+        try:
+            n = int(export_n_spin.value())
+            frames = sorted(_frame_scores(), key=lambda t: t[1], reverse=bool(high))[:n]
+            exported = sum(1 for idx, _score in frames if _export_frame_index(idx, "high" if high else "low"))
+            set_status(f"Exported {exported}/{len(frames)} {'high' if high else 'low'} confidence frames to review dataset.")
+        except Exception as exc:
+            set_status("Confidence export failed: " + str(exc))
+
+    def export_random_frames() -> None:
+        try:
+            if getattr(page, "_mustatil_review_cap", None) is None:
+                if not open_video_for_review(_as_path_text(video_line), False):
+                    return
+            total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            if total <= 0:
+                set_status("No video frame count available.")
+                return
+            n = min(int(export_n_spin.value()), total)
+            frames = random.sample(range(total), n)
+            exported = sum(1 for idx in frames if _export_frame_index(idx, "random"))
+            set_status(f"Exported {exported}/{n} random frames to review dataset.")
+        except Exception as exc:
+            set_status("Random export failed: " + str(exc))
+
+    review_timer.timeout.connect(_play_tick)
+    back10_btn.clicked.connect(lambda: step_frame(-10))
+    prev_btn.clicked.connect(lambda: step_frame(-1))
+    next_btn.clicked.connect(lambda: step_frame(1))
+    fwd10_btn.clicked.connect(lambda: step_frame(10))
+    play_btn.clicked.connect(toggle_play)
+    pause_play_btn.clicked.connect(pause_player)
+    mark_in_btn.clicked.connect(mark_in)
+    mark_out_btn.clicked.connect(mark_out)
+    snapshot_btn.clicked.connect(save_current_frame)
+    send_current_btn.clicked.connect(export_current_to_review)
+    send_low_btn.clicked.connect(lambda: export_confidence_frames(False))
+    send_high_btn.clicked.connect(lambda: export_confidence_frames(True))
+    send_random_btn.clicked.connect(export_random_frames)
+    save_cache_btn.clicked.connect(save_review_cache)
+    load_cache_btn.clicked.connect(lambda: load_review_cache(False))
+    clear_cache_btn.clicked.connect(clear_review_data)
+    refresh_exported_frames_btn.clicked.connect(refresh_exported_frames_list)
+    open_exported_frame_btn.clicked.connect(open_selected_exported_frame)
+    open_frame_export_folder_btn.clicked.connect(open_frame_export_folder)
+    if frame_slider is not None:
+        frame_slider.valueChanged.connect(lambda v: show_frame(int(v)))
+    speed_combo.currentTextChanged.connect(lambda _t: (review_timer.setInterval(int(max(8, 1000.0 / max(1.0, float(getattr(page, "_mustatil_review_fps", 25.0) or 25.0) * _speed_factor())))) if review_timer.isActive() else None))
+    try:
+        start_frame_spin.valueChanged.connect(lambda _v: _update_mark_label())
+        end_frame_spin.valueChanged.connect(lambda _v: _update_mark_label())
+    except Exception:
+        pass
+
+    try:
+        video_line.textChanged.connect(lambda p: open_video_for_review(str(p), True) if str(p).strip() and Path(str(p).strip().strip('"')).exists() else None)
+    except Exception:
+        pass
+    try:
+        review_dir_line.textChanged.connect(lambda _p: refresh_exported_frames_list())
+        frames_line.textChanged.connect(lambda _p: refresh_exported_frames_list())
+    except Exception:
+        pass
+
+    def backend_config() -> Dict[str, Any]:
+        idx = model_tabs.currentIndex()
+        label = str(model_tabs.tabText(idx) or "YOLO")
+        low = label.lower()
+        backend = "yolo"
+        backend_label = label
+        model_path = ""
+        open_model_id = ""
+        prompt = ""
+        lae_config = ""
+        lae_weights = ""
+        if "onnx" in low:
+            backend = "onnx"; model_path = _as_path_text(onnx_model_line) or _as_path_text(yolo_model_line)
+        elif "owl" in low:
+            backend = "owlv2"; open_model_id = _as_path_text(owl_model_line); prompt = _as_path_text(owl_prompt_line)
+        elif "ground" in low:
+            backend = "grounding_dino"; open_model_id = _as_path_text(gdino_model_line); prompt = _as_path_text(gdino_prompt_line)
+        elif "lae" in low:
+            backend = "lae_dino"; prompt = str(getattr(page, "_mustatil_video_lae_classes_text", "") or "mustatil, false_positive"); lae_config = _as_path_text(lae_config_line); lae_weights = _as_path_text(lae_weights_line)
+        elif "sam" in low:
+            backend = "sam"
+        else:
+            backend = "yolo"; model_path = _as_path_text(yolo_model_line)
+        return {
+            "backend": backend,
+            "backend_label": backend_label,
+            "video_path": _as_path_text(video_line),
+            "model_path": model_path,
+            "open_model_id": open_model_id,
+            "prompt": prompt,
+            "lae_config": lae_config,
+            "lae_weights": lae_weights,
+            "device": str(device_combo.currentText() or "auto"),
+            "conf": float(conf_spin.value()),
+            "iou": float(iou_spin.value()),
+            "imgsz": int(imgsz_spin.value()),
+            "every_n": int(every_spin.value()),
+            "batch": int(batch_spin.value()),
+            "kpvis": float(kpvis_spin.value()),
+            "start_frame": int(start_frame_spin.value()),
+            "end_frame": (int(end_frame_spin.value()) if int(end_frame_spin.value()) > 0 else -1),
+            "class_filter": _as_path_text(class_filter_line),
+            "text_threshold": float(gdino_text_thr.value()),
+            "annotated_video_path": _as_path_text(annotated_video_line),
+            "csv_path": _as_path_text(csv_line),
+            "json_path": _as_path_text(json_line),
+            "frames_dir": _as_path_text(frames_line),
+            "yolo_dir": _as_path_text(yolo_dir_line),
+            "review_dir": _as_path_text(review_dir_line),
+            "include_empty": bool(include_empty_check.isChecked()),
+            "export_raw_skipped_frames": bool(export_raw_skips_check.isChecked()),
+        }
+
+    def validate_config(cfg: Dict[str, Any]) -> Optional[str]:
+        if not cfg.get("video_path") or not Path(str(cfg.get("video_path"))).exists():
+            return "Please select an existing video file."
+        if cfg.get("backend") in {"yolo", "onnx"}:
+            mp = str(cfg.get("model_path") or "").strip()
+            if not mp or not Path(mp).exists():
+                return "Please select an existing YOLO/ONNX model file."
+        if cfg.get("backend") == "lae_dino":
+            cfg_path = str(cfg.get("lae_config") or "").strip()
+            ckpt_path = str(cfg.get("lae_weights") or "").strip()
+            if not cfg_path or not Path(cfg_path).exists():
+                return "Please import/select an existing LAE-DINO config file."
+            if not ckpt_path or not Path(ckpt_path).exists():
+                return "Please import/select an existing LAE-DINO checkpoint file."
+        return None
+
+    def update_preview(frame_bgr: Any) -> None:
+        try:
+            import cv2
+            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb.shape
+            try:
+                page._mustatil_review_w = int(w)  # type: ignore[attr-defined]
+                page._mustatil_review_h = int(h)  # type: ignore[attr-defined]
+                preview_label._source_w = int(w)
+                preview_label._source_h = int(h)
+            except Exception:
+                pass
+            bytes_per_line = ch * w
+            img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format.Format_RGB888 if hasattr(QImage, "Format") else QImage.Format_RGB888).copy()
+            pm = QPixmap.fromImage(img)
+            pm = pm.scaled(preview_label.size(), _qt_keep_aspect(q), _qt_smooth(q))
+            preview_label.setPixmap(pm)
+        except Exception as exc:
+            try:
+                preview_label.setText("Preview update failed: " + str(exc))
+            except Exception:
+                pass
+
+    def add_detections(dets: Any) -> None:
+        try:
+            records = list(dets or [])
+            for _d in records:
+                try:
+                    if not _d.get("uid"):
+                        raw = json.dumps(_d, sort_keys=True, default=str) + str(time.time()) + str(random.random())
+                        _d["uid"] = hashlib.sha1(raw.encode("utf-8", "ignore")).hexdigest()[:16]
+                    if "review_status" not in _d:
+                        _d["review_status"] = "prediction" if str(_d.get("backend", "")).lower() not in {"manual", "frame_label"} else "manual"
+                except Exception:
+                    pass
+            page._mustatil_video_records.extend(records)  # type: ignore[attr-defined]
+            try:
+                sync_label_combo()
+            except Exception:
+                pass
+            max_rows = 3000
+            for d in records:
+                if table.rowCount() >= max_rows:
+                    table.removeRow(0)
+                r = table.rowCount()
+                table.insertRow(r)
+                vals = [
+                    str(d.get("frame", "")),
+                    f"{float(d.get('time_seconds', 0.0)):.2f}",
+                    str(d.get("backend", d.get("model", ""))),
+                    str(d.get("class_name", d.get("label", ""))),
+                    f"{float(d.get('confidence', d.get('conf', 0.0))):.3f}",
+                    f"{float(d.get('x1', 0.0)):.1f}",
+                    f"{float(d.get('y1', 0.0)):.1f}",
+                    f"{float(d.get('x2', 0.0)):.1f}/{float(d.get('y2', 0.0)):.1f}",
+                    str(d.get("review_status", "")),
+                    str(d.get("uid", "")),
+                ]
+                for c, v in enumerate(vals):
+                    item = QTableWidgetItem(v)
+                    if c == 3:
+                        _apply_detection_item_color(item, d.get("class_name", d.get("label", "object")), d.get("class_id", None))
+                    table.setItem(r, c, item)
+        except Exception as exc:
+            append_log("Table update failed: " + str(exc))
+
+    # ----------------------------- Label Studio-style helpers -----------------------------
+    def _active_label() -> str:
+        try:
+            txt = str(preview_class_combo.currentText()).strip()
+            if txt:
+                return txt
+        except Exception:
+            pass
+        try:
+            txt = str(active_label_combo.currentText()).strip()
+            return txt or "object"
+        except Exception:
+            return "object"
+
+    def _sync_combo_values(combo: Any, values: List[str]) -> None:
+        try:
+            current = str(combo.currentText()) if hasattr(combo, "currentText") else ""
+            combo.blockSignals(True)
+            combo.clear()
+            for v in values:
+                if str(v).strip():
+                    combo.addItem(str(v).strip())
+            if current and current in values:
+                combo.setCurrentText(current)
+            combo.blockSignals(False)
+        except Exception:
+            pass
+
+    def sync_label_combo() -> None:
+        try:
+            vals = []
+            for src_txt in [_as_path_text(annotation_classes_line), _as_path_text(class_filter_line)]:
+                for part in src_txt.replace(";", ",").split(","):
+                    part = part.strip()
+                    if part and part not in vals:
+                        vals.append(part)
+            for r in list(getattr(page, "_mustatil_video_records", []) or []):
+                lab = str(r.get("class_name", r.get("label", ""))).strip()
+                if lab and lab not in vals:
+                    vals.append(lab)
+            for seg in list(getattr(page, "_mustatil_video_segments", []) or []):
+                lab = str(seg.get("label", "")).strip()
+                if lab and lab not in vals:
+                    vals.append(lab)
+            if not vals:
+                vals = ["object"]
+            _sync_combo_values(active_label_combo, vals)
+            _sync_combo_values(preview_class_combo, vals)
+        except Exception:
+            pass
+
+    def _cur_frame() -> int:
+        try: return int(getattr(page, "_mustatil_review_current", 0) or 0)
+        except Exception: return 0
+
+    def _cur_time() -> float:
+        try:
+            fps = float(getattr(page, "_mustatil_review_fps", 25.0) or 25.0)
+            return float(_cur_frame()) / max(0.001, fps)
+        except Exception: return 0.0
+
+    def _frame_size() -> Tuple[int, int]:
+        try:
+            w = int(getattr(page, "_mustatil_review_w", 0) or getattr(preview_label, "_source_w", 0) or 0)
+            h = int(getattr(page, "_mustatil_review_h", 0) or getattr(preview_label, "_source_h", 0) or 0)
+            return w, h
+        except Exception: return 0, 0
+
+    def _new_uid(prefix: str = "r") -> str:
+        raw = prefix + str(time.time()) + str(random.random())
+        return hashlib.sha1(raw.encode("utf-8", "ignore")).hexdigest()[:16]
+
+    def add_manual_box_from_image_coords(x1: float, y1: float, x2: float, y2: float, source: str = "manual") -> None:
+        try:
+            frame_idx = _cur_frame()
+            rec = {"uid": _new_uid("box"), "frame": int(frame_idx), "time_seconds": float(_cur_time()), "backend": str(source), "class_id": 0, "class_name": _active_label(), "confidence": 1.0, "x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2), "track_id": int(track_id_spin.value()), "review_status": "manual", "comment": _as_path_text(comment_line)}
+            add_detections([rec]); show_frame(frame_idx)
+            try:
+                bottom_tabs.setCurrentIndex(0)
+                # Select the newly added manual region in the bottom list.
+                for rr in range(table.rowCount() - 1, -1, -1):
+                    item = table.item(rr, 9)
+                    if item is not None and str(item.text()) == str(rec.get("uid", "")):
+                        table.selectRow(rr); break
+            except Exception:
+                pass
+            set_status(f"Added label box on frame {frame_idx}: {rec['class_name']} -> bottom list")
+        except Exception as exc: set_status("Add manual box failed: " + str(exc))
+
+    def add_full_frame_box() -> None:
+        try:
+            w, h = _frame_size()
+            if w <= 0 or h <= 0:
+                set_status("No current frame size available. Load/show a video frame first."); return
+            add_manual_box_from_image_coords(0, 0, w - 1, h - 1, "manual_full_frame")
+        except Exception as exc: set_status("Full-frame box failed: " + str(exc))
+
+    def add_frame_label() -> None:
+        try:
+            w, h = _frame_size(); rec = {"uid": _new_uid("frame"), "frame": _cur_frame(), "time_seconds": _cur_time(), "backend": "frame_label", "class_id": 0, "class_name": _active_label(), "confidence": 1.0, "x1": 0.0, "y1": 0.0, "x2": float(max(1, w) - 1), "y2": float(max(1, h) - 1), "track_id": int(track_id_spin.value()), "review_status": "manual", "comment": _as_path_text(comment_line)}
+            add_detections([rec])
+            page._mustatil_video_choices.append({"scope": "frame", "frame": _cur_frame(), "choice": _active_label(), "status": str(task_status_combo.currentText()), "comment": _as_path_text(comment_line), "uid": rec["uid"]})  # type: ignore[attr-defined]
+            refresh_choices_table(); set_status(f"Added frame label on frame {_cur_frame()}: {_active_label()}")
+        except Exception as exc: set_status("Frame label failed: " + str(exc))
+
+    def add_timeline_segment() -> None:
+        try:
+            a = int(start_frame_spin.value()); b = int(end_frame_spin.value()); total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            if b <= 0 and total > 0: b = total - 1
+            if b < a: a, b = b, a
+            fps = float(getattr(page, "_mustatil_review_fps", 25.0) or 25.0)
+            seg = {"uid": _new_uid("seg"), "start_frame": a, "end_frame": b, "start_time": a / max(0.001, fps), "end_time": b / max(0.001, fps), "label": _active_label(), "status": str(task_status_combo.currentText()), "comment": _as_path_text(comment_line)}
+            page._mustatil_video_segments.append(seg)  # type: ignore[attr-defined]
+            refresh_segments_table(); sync_label_combo(); set_status(f"Added timeline segment {a}-{b}: {seg['label']}")
+        except Exception as exc: set_status("Timeline segment failed: " + str(exc))
+
+    def add_video_choice() -> None:
+        try:
+            ch = str(video_choice_combo.currentText()).strip() or _active_label()
+            item = {"uid": _new_uid("choice"), "scope": "video", "frame": -1, "choice": ch, "status": str(task_status_combo.currentText()), "comment": _as_path_text(comment_line)}
+            page._mustatil_video_choices.append(item)  # type: ignore[attr-defined]
+            refresh_choices_table(); set_status("Added video choice: " + ch)
+        except Exception as exc: set_status("Video choice failed: " + str(exc))
+
+    def refresh_segments_table() -> None:
+        try:
+            segments_table.setRowCount(0)
+            for seg in list(getattr(page, "_mustatil_video_segments", []) or []):
+                r = segments_table.rowCount(); segments_table.insertRow(r)
+                vals = [str(seg.get("start_frame", "")), str(seg.get("end_frame", "")), f"{float(seg.get('start_time', 0.0)):.2f}", f"{float(seg.get('end_time', 0.0)):.2f}", str(seg.get("label", "")), str(seg.get("comment", ""))]
+                for c, v in enumerate(vals): segments_table.setItem(r, c, QTableWidgetItem(v))
+        except Exception as exc: append_log("Refresh segments failed: " + str(exc))
+
+    def refresh_choices_table() -> None:
+        try:
+            choices_table.setRowCount(0)
+            for item in list(getattr(page, "_mustatil_video_choices", []) or []):
+                r = choices_table.rowCount(); choices_table.insertRow(r)
+                vals = [str(item.get("scope", "")), str(item.get("frame", "")), str(item.get("choice", item.get("label", ""))), str(item.get("status", "")), str(item.get("comment", ""))]
+                for c, v in enumerate(vals): choices_table.setItem(r, c, QTableWidgetItem(v))
+        except Exception as exc: append_log("Refresh choices failed: " + str(exc))
+
+    def _selected_region_uids() -> List[str]:
+        uids = []
+        try:
+            for item in table.selectedItems():
+                r = item.row(); uid_item = table.item(r, 9)
+                if uid_item is not None:
+                    uid = str(uid_item.text())
+                    if uid and uid not in uids: uids.append(uid)
+        except Exception: pass
+        return uids
+
+    def set_selected_region_status(status: str) -> None:
+        try:
+            uids = set(_selected_region_uids())
+            if not uids:
+                set_status("No selected region rows."); return
+            for rec in list(getattr(page, "_mustatil_video_records", []) or []):
+                if str(rec.get("uid", "")) in uids: rec["review_status"] = status
+            refresh_table_from_records(); set_status(f"Set {len(uids)} selected region(s) to {status}.")
+        except Exception as exc: set_status("Review status update failed: " + str(exc))
+
+    def delete_selected_regions() -> None:
+        try:
+            uids = set(_selected_region_uids())
+            if not uids:
+                set_status("No selected region rows."); return
+            page._mustatil_video_records = [r for r in list(getattr(page, "_mustatil_video_records", []) or []) if str(r.get("uid", "")) not in uids]  # type: ignore[attr-defined]
+            refresh_table_from_records(); show_frame(_cur_frame()); set_status(f"Deleted {len(uids)} selected region(s).")
+        except Exception as exc: set_status("Delete selected failed: " + str(exc))
+
+    def add_label_from_line() -> None:
+        try:
+            lab = str(active_label_combo.currentText()).strip()
+            if not lab: return
+            current = _as_path_text(annotation_classes_line)
+            parts = [p.strip() for p in current.replace(";", ",").split(",") if p.strip()]
+            if lab not in parts:
+                parts.append(lab); annotation_classes_line.setText(", ".join(parts))
+            sync_label_combo(); set_status("Added/selected label: " + lab)
+        except Exception as exc: set_status("Add label failed: " + str(exc))
+
+    def _ls_label_config_xml(labels: List[str]) -> str:
+        labels = labels or ["object"]
+        lab_lines = "\n".join(['      <Label value="' + str(l).replace('"', '') + '" background="#1d81cd"/>' for l in labels])
+        fps_txt = f"{float(getattr(page, '_mustatil_review_fps', 25.0) or 25.0):.3f}"
+        return ('<View>\n'
+                '  <Video name="video" value="$video" framerate="' + fps_txt + '" timelineHeight="120"/>\n'
+                '  <Labels name="videoLabels" toName="video" allowEmpty="true">\n' + lab_lines + '\n  </Labels>\n'
+                '  <VideoRectangle name="box" toName="video"/>\n'
+                '  <TimelineLabels name="timeline" toName="video">\n' + lab_lines + '\n  </TimelineLabels>\n'
+                '  <Choices name="choice" toName="video" showInLine="true">\n'
+                '    <Choice value="Interesting"/>\n    <Choice value="Blurry"/>\n    <Choice value="Sharp"/>\n    <Choice value="Needs review"/>\n'
+                '  </Choices>\n</View>\n')
+
+    def export_label_studio_json() -> None:
+        try:
+            default = str(Path(_as_path_text(video_line) or "video").with_suffix("")) + "_label_studio_tasks.json"
+            fn, _ = QFileDialog.getSaveFileName(page, "Export Label Studio JSON", default, "Label Studio JSON (*.json);;All files (*)")
+            if not fn: return
+            w, h = _frame_size()
+            if w <= 0 or h <= 0: w = h = 1
+            results = []; labels = []
+            for rec in list(getattr(page, "_mustatil_video_records", []) or []):
+                lab = str(rec.get("class_name", rec.get("label", "object")) or "object")
+                if lab not in labels: labels.append(lab)
+                x1 = float(rec.get("x1", 0.0)); y1 = float(rec.get("y1", 0.0)); x2 = float(rec.get("x2", 0.0)); y2 = float(rec.get("y2", 0.0))
+                results.append({"id": str(rec.get("uid", _new_uid("ls"))), "from_name": "box", "to_name": "video", "type": "videorectangle", "value": {"frame": int(rec.get("frame", 0)), "time": float(rec.get("time_seconds", 0.0)), "x": 100.0 * x1 / w, "y": 100.0 * y1 / h, "width": 100.0 * max(0.0, x2 - x1) / w, "height": 100.0 * max(0.0, y2 - y1) / h, "rotation": 0, "rectanglelabels": [lab]}, "score": float(rec.get("confidence", 1.0) or 1.0), "meta": {"backend": str(rec.get("backend", "")), "track_id": int(rec.get("track_id", 0) or 0), "review_status": str(rec.get("review_status", "")), "comment": str(rec.get("comment", ""))}})
+            for seg in list(getattr(page, "_mustatil_video_segments", []) or []):
+                lab = str(seg.get("label", "segment") or "segment")
+                if lab not in labels: labels.append(lab)
+                results.append({"id": str(seg.get("uid", _new_uid("seg"))), "from_name": "timeline", "to_name": "video", "type": "timelinelabels", "value": {"start": float(seg.get("start_time", 0.0)), "end": float(seg.get("end_time", 0.0)), "start_frame": int(seg.get("start_frame", 0)), "end_frame": int(seg.get("end_frame", 0)), "timelineLabels": [lab]}, "meta": {"status": str(seg.get("status", "")), "comment": str(seg.get("comment", ""))}})
+            for ch in list(getattr(page, "_mustatil_video_choices", []) or []):
+                results.append({"id": str(ch.get("uid", _new_uid("choice"))), "from_name": "choice", "to_name": "video", "type": "choices", "value": {"choices": [str(ch.get("choice", ""))]}, "meta": {"scope": str(ch.get("scope", "video")), "frame": int(ch.get("frame", -1) or -1), "status": str(ch.get("status", "")), "comment": str(ch.get("comment", ""))}})
+            task = {"data": {"video": _as_path_text(video_line)}, "annotations": [{"result": results, "was_cancelled": False, "ground_truth": False}], "predictions": []}
+            Path(fn).write_text(json.dumps([task], indent=2, ensure_ascii=False), encoding="utf-8")
+            cfg_path = Path(fn).with_name(Path(fn).stem + "_label_config.xml")
+            cfg_path.write_text(_ls_label_config_xml(labels or ["object"]), encoding="utf-8")
+            set_status(f"Exported Label Studio JSON: {fn}")
+        except Exception as exc: set_status("Label Studio export failed: " + str(exc))
+
+    def import_label_studio_json() -> None:
+        try:
+            fn, _ = QFileDialog.getOpenFileName(page, "Import Label Studio JSON", "", "JSON (*.json);;All files (*)")
+            if not fn: return
+            data = json.loads(Path(fn).read_text(encoding="utf-8")); tasks = data if isinstance(data, list) else [data]
+            page._mustatil_labelstudio_tasks = tasks  # type: ignore[attr-defined]
+            if tasks:
+                vid = str((tasks[0].get("data") or {}).get("video", ""))
+                if vid and Path(vid).exists(): video_line.setText(vid); open_video_for_review(vid, True)
+            w, h = _frame_size()
+            if w <= 0 or h <= 0: w = h = 1
+            imported_records = []; imported_segments = []; imported_choices = []
+            for task in tasks:
+                annos = list(task.get("annotations", []) or []) + list(task.get("predictions", []) or [])
+                for ann in annos:
+                    for res in list(ann.get("result", []) or []):
+                        typ = str(res.get("type", "")).lower(); val = res.get("value", {}) or {}; meta = res.get("meta", {}) or {}
+                        if "rectangle" in typ:
+                            labels = val.get("rectanglelabels") or val.get("labels") or ["object"]
+                            x = float(val.get("x", 0.0)); y = float(val.get("y", 0.0)); ww = float(val.get("width", 0.0)); hh = float(val.get("height", 0.0))
+                            imported_records.append({"uid": str(res.get("id", _new_uid("ls"))), "frame": int(val.get("frame", 0)), "time_seconds": float(val.get("time", 0.0)), "backend": "label_studio_import", "class_id": 0, "class_name": str(labels[0] if labels else "object"), "confidence": float(res.get("score", 1.0) or 1.0), "x1": x*w/100.0, "y1": y*h/100.0, "x2": (x+ww)*w/100.0, "y2": (y+hh)*h/100.0, "track_id": int(meta.get("track_id", 0) or 0), "review_status": str(meta.get("review_status", "imported")), "comment": str(meta.get("comment", ""))})
+                        elif "timeline" in typ:
+                            labs = val.get("timelineLabels") or val.get("labels") or ["segment"]
+                            imported_segments.append({"uid": str(res.get("id", _new_uid("seg"))), "start_frame": int(val.get("start_frame", 0)), "end_frame": int(val.get("end_frame", 0)), "start_time": float(val.get("start", 0.0)), "end_time": float(val.get("end", 0.0)), "label": str(labs[0] if labs else "segment"), "status": str(meta.get("status", "imported")), "comment": str(meta.get("comment", ""))})
+                        elif "choice" in typ:
+                            choices = val.get("choices") or []
+                            imported_choices.append({"uid": str(res.get("id", _new_uid("choice"))), "scope": str(meta.get("scope", "video")), "frame": int(meta.get("frame", -1) or -1), "choice": str(choices[0] if choices else ""), "status": str(meta.get("status", "imported")), "comment": str(meta.get("comment", ""))})
+            add_detections(imported_records)
+            page._mustatil_video_segments.extend(imported_segments)  # type: ignore[attr-defined]
+            page._mustatil_video_choices.extend(imported_choices)    # type: ignore[attr-defined]
+            refresh_segments_table(); refresh_choices_table(); sync_label_combo()
+            set_status(f"Imported Label Studio JSON: {len(imported_records)} boxes, {len(imported_segments)} segments, {len(imported_choices)} choices.")
+        except Exception as exc: set_status("Label Studio import failed: " + str(exc))
+
+    try:
+        preview_label._mustatil_on_box_drawn = add_manual_box_from_image_coords
+        preview_label._mustatil_mode_getter = lambda: ("Draw Box" if bool(preview_draw_check.isChecked()) else str(annotation_mode_combo.currentText()))
+        def _preview_combo_changed() -> None:
+            try:
+                lab = str(preview_class_combo.currentText()).strip()
+                if lab:
+                    active_label_combo.blockSignals(True)
+                    active_label_combo.setCurrentText(lab)
+                    active_label_combo.blockSignals(False)
+            except Exception:
+                pass
+        def _panel_combo_changed() -> None:
+            try:
+                lab = str(active_label_combo.currentText()).strip()
+                if lab:
+                    preview_class_combo.blockSignals(True)
+                    preview_class_combo.setCurrentText(lab)
+                    preview_class_combo.blockSignals(False)
+            except Exception:
+                pass
+        try:
+            preview_class_combo.currentTextChanged.connect(lambda *_: _preview_combo_changed())
+            active_label_combo.currentTextChanged.connect(lambda *_: _panel_combo_changed())
+            _preview_combo_changed()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    def progress_update(done: int, total: int, msg: str) -> None:
+        try:
+            if total and total > 0:
+                progress.setValue(max(0, min(100, int(done * 100 / total))))
+            else:
+                progress.setValue(0)
+            status_label.setText(str(msg))
+        except Exception:
+            pass
+
+    def worker_finished(ok: bool, msg: str) -> None:
+        try:
+            _set_detection_buttons_running(False)
+            progress.setValue(100 if ok else progress.value())
+            page._mustatil_video_worker = None  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        if ok:
+            try:
+                save_review_cache()
+            except Exception:
+                pass
+            try:
+                refresh_exported_frames_list()
+            except Exception:
+                pass
+        set_status(msg)
+        if not ok:
+            try:
+                QMessageBox.warning(page, "Video Detection", str(msg))
+            except Exception:
+                pass
+
+    def _set_detection_buttons_running(running: bool) -> None:
+        try:
+            start_btn.setEnabled(not running)
+            marked_btn.setEnabled(not running)
+            frame_detect_btn.setEnabled(not running)
+            pause_detect_btn.setEnabled(running)
+            resume_detect_btn.setEnabled(False)
+            stop_btn.setEnabled(running)
+        except Exception:
+            pass
+
+    def _apply_detection_mode(cfg: Dict[str, Any], mode: str) -> Dict[str, Any]:
+        cfg = dict(cfg)
+        mode = str(mode or "full")
+        if mode == "full":
+            cfg["start_frame"] = 0
+            cfg["end_frame"] = -1
+            cfg["mode_label"] = "full video"
+        elif mode == "marked":
+            a = int(start_frame_spin.value())
+            b = int(end_frame_spin.value())
+            total = int(getattr(page, "_mustatil_review_total", 0) or 0)
+            if b <= 0 and total > 0:
+                b = total - 1
+            if b > 0 and b < a:
+                a, b = b, a
+                start_frame_spin.setValue(a)
+                end_frame_spin.setValue(b)
+            cfg["start_frame"] = max(0, a)
+            cfg["end_frame"] = b if b > 0 else -1
+            cfg["mode_label"] = "marked range"
+            _update_mark_label()
+        elif mode == "frame":
+            cur = int(getattr(page, "_mustatil_review_current", 0) or 0)
+            cfg["start_frame"] = cur
+            cfg["end_frame"] = cur
+            cfg["every_n"] = 1
+            cfg["mode_label"] = "current frame"
+            # Frame detection is a preview/review action. It should not overwrite
+            # the full annotated MP4 or dataset exports. The detected result still
+            # appears in preview/table and review cache.
+            cfg["annotated_video_path"] = ""
+            cfg["csv_path"] = ""
+            cfg["json_path"] = ""
+            cfg["frames_dir"] = ""
+            cfg["yolo_dir"] = ""
+        return cfg
+
+    def start_detection(mode: str = "full") -> None:
+        try:
+            cfg = backend_config()
+            suggest_outputs(cfg.get("video_path", ""))
+            # Re-read output fields after suggestions, then apply the requested mode.
+            cfg = _apply_detection_mode(backend_config(), mode)
+            err = validate_config(cfg)
+            if err:
+                set_status(err)
+                try:
+                    QMessageBox.warning(page, "Video Detection", err)
+                except Exception:
+                    pass
+                return
+            if cfg.get("backend") == "sam":
+                err = "SAM is not a standalone detector. Select YOLO, ONNX YOLO, OWLv2, Grounding DINO, or LAE-DINO."
+                set_status(err)
+                try:
+                    QMessageBox.information(page, "SAM video hook", err)
+                except Exception:
+                    pass
+                return
+            if page._mustatil_video_worker is not None:  # type: ignore[attr-defined]
+                set_status("Video detection is already running.")
+                return
+            if mode != "frame":
+                table.setRowCount(0)
+                page._mustatil_video_records = []  # type: ignore[attr-defined]
+            progress.setValue(0)
+            Worker = _qt_thread_class(q)
+            worker = Worker(cfg, ws, page)
+            worker.status.connect(set_status)
+            worker.progress.connect(progress_update)
+            worker.preview.connect(update_preview)
+            worker.detections_batch.connect(add_detections)
+            worker.finished_ok.connect(worker_finished)
+            page._mustatil_video_worker = worker  # type: ignore[attr-defined]
+            _set_detection_buttons_running(True)
+            set_status("Starting video detection: " + str(cfg.get("mode_label", mode)) + "...")
+            worker.start()
+        except Exception as exc:
+            set_status("Start failed: " + str(exc))
+            try:
+                traceback.print_exc()
+            except Exception:
+                pass
+
+    def pause_detection() -> None:
+        try:
+            worker = page._mustatil_video_worker  # type: ignore[attr-defined]
+            if worker is not None and hasattr(worker, "requestPause"):
+                worker.requestPause()
+                pause_detect_btn.setEnabled(False)
+                resume_detect_btn.setEnabled(True)
+                set_status("Pause requested. Detection will pause between frames.")
+        except Exception as exc:
+            set_status("Pause failed: " + str(exc))
+
+    def resume_detection() -> None:
+        try:
+            worker = page._mustatil_video_worker  # type: ignore[attr-defined]
+            if worker is not None and hasattr(worker, "requestResume"):
+                worker.requestResume()
+                pause_detect_btn.setEnabled(True)
+                resume_detect_btn.setEnabled(False)
+                set_status("Detection resumed.")
+        except Exception as exc:
+            set_status("Resume failed: " + str(exc))
+
+    def stop_detection() -> None:
+        try:
+            worker = page._mustatil_video_worker  # type: ignore[attr-defined]
+            if worker is not None:
+                try:
+                    if hasattr(worker, "requestResume"):
+                        worker.requestResume()
+                except Exception:
+                    pass
+                worker.requestInterruption()
+                set_status("Stop requested. Waiting for current frame to finish...")
+        except Exception as exc:
+            set_status("Stop failed: " + str(exc))
+
+    def open_output_folder() -> None:
+        try:
+            candidates = [_as_path_text(csv_line), _as_path_text(annotated_video_line), _as_path_text(frames_line), _as_path_text(yolo_dir_line)]
+            folder = None
+            for c in candidates:
+                if not c:
+                    continue
+                p = Path(c)
+                folder = p if p.is_dir() else p.parent
+                if folder.exists():
+                    break
+            if folder is None:
+                folder = Path(_as_path_text(video_line)).parent
+            if os.name == "nt":
+                os.startfile(str(folder))  # type: ignore[attr-defined]
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", str(folder)])
+        except Exception as exc:
+            set_status("Open output folder failed: " + str(exc))
+
+    add_label_btn.clicked.connect(add_label_from_line)
+    add_box_btn.clicked.connect(add_full_frame_box)
+    add_frame_label_btn.clicked.connect(add_frame_label)
+    add_segment_btn.clicked.connect(add_timeline_segment)
+    add_choice_btn.clicked.connect(add_video_choice)
+    accept_selected_btn.clicked.connect(lambda: set_selected_region_status("accepted"))
+    reject_selected_btn.clicked.connect(lambda: set_selected_region_status("rejected"))
+    delete_selected_btn.clicked.connect(delete_selected_regions)
+    import_ls_btn.clicked.connect(import_label_studio_json)
+    export_ls_btn.clicked.connect(export_label_studio_json)
+    save_project_btn.clicked.connect(save_review_cache)
+    load_project_btn.clicked.connect(lambda: load_review_cache(False))
+    try:
+        annotation_classes_line.textChanged.connect(lambda _t: sync_label_combo())
+        class_filter_line.textChanged.connect(lambda _t: sync_label_combo())
+    except Exception:
+        pass
+    sync_label_combo()
+
+    start_btn.clicked.connect(lambda: start_detection("full"))
+    marked_btn.clicked.connect(lambda: start_detection("marked"))
+    frame_detect_btn.clicked.connect(lambda: start_detection("frame"))
+    pause_detect_btn.clicked.connect(pause_detection)
+    resume_detect_btn.clicked.connect(resume_detection)
+    stop_btn.clicked.connect(stop_detection)
+    open_out_btn.clicked.connect(open_output_folder)
+    try:
+        table.cellDoubleClicked.connect(lambda r, c: show_frame(int(table.item(r, 0).text())) if table.item(r, 0) is not None else None)
+    except Exception:
+        pass
+
+    # SqueakPose-style keyboard shortcuts: arrow keys for frame stepping,
+    # E=current frame, Shift+E=low confidence, Shift+H=high confidence, Shift+R=random.
+    try:
+        try:
+            from PySide6.QtGui import QShortcut, QKeySequence
+        except Exception:
+            try:
+                from PyQt6.QtGui import QShortcut, QKeySequence
+            except Exception:
+                from PyQt5.QtWidgets import QShortcut  # type: ignore
+                from PyQt5.QtGui import QKeySequence  # type: ignore
+        sc_left = QShortcut(QKeySequence("Left"), page); sc_left.setAutoRepeat(True); sc_left.activated.connect(lambda: step_frame(-1))
+        sc_right = QShortcut(QKeySequence("Right"), page); sc_right.setAutoRepeat(True); sc_right.activated.connect(lambda: step_frame(1))
+        sc_e = QShortcut(QKeySequence("E"), page); sc_e.activated.connect(export_current_to_review)
+        sc_low = QShortcut(QKeySequence("Shift+E"), page); sc_low.activated.connect(lambda: export_confidence_frames(False))
+        sc_high = QShortcut(QKeySequence("Shift+H"), page); sc_high.activated.connect(lambda: export_confidence_frames(True))
+        sc_rand = QShortcut(QKeySequence("Shift+R"), page); sc_rand.activated.connect(export_random_frames)
+        page._mustatil_video_shortcuts = [sc_left, sc_right, sc_e, sc_low, sc_high, sc_rand]  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    # Try to prefill model paths from Mustatil's normal model slots if available.
+    try:
+        models = getattr(ws, "models", []) or []
+        for v in models:
+            try:
+                val = v.get() if hasattr(v, "get") else str(v)
+                if val and Path(str(val)).exists():
+                    yolo_model_line.setText(str(val))
+                    if str(val).lower().endswith(".onnx"):
+                        onnx_model_line.setText(str(val))
+                    break
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    append_log("Video Detection v8 ready: full-video/frame/range detection plus Label Studio-style tasks, labels, regions, choices, timeline segments, review status, LS JSON import/export.")
+    return page
+
+
+def _make_error_page(message: str) -> Any:
+    q = _qt()
+    QWidget = q["QWidget"]; QVBoxLayout = q["QVBoxLayout"]; QLabel = q["QLabel"]; QTextEdit = q["QTextEdit"]
+    page = QWidget(); page.setObjectName(_VIDEO_TAB_OBJECT)
+    lay = QVBoxLayout(page)
+    lbl = QLabel("Video Detection plugin loaded, but the full page could not be built.")
+    lbl.setWordWrap(True)
+    lay.addWidget(lbl)
+    txt = QTextEdit(); txt.setReadOnly(True); txt.setPlainText(str(message))
+    lay.addWidget(txt, 1)
+    return page
+
+
+def _safe_insert_tab(tw: Any, index: int, page: Any, label: str) -> int:
+    """Insert with the pre-hook insertTab where possible to avoid recursion."""
+    try:
+        if _CURRENT_INSERT is not None:
+            return int(_CURRENT_INSERT(tw, index, page, label))
+    except Exception:
+        pass
+    return int(tw.insertTab(index, page, label))
+
+
+def _install_video_tab_for_tabwidget(tw: Any, reason: str = "") -> bool:
+    """Ensure Video Detection is exactly right of Satellite Detection.
+
+    This function is intentionally more forceful than v3: if an older Video
+    Detection tab already exists elsewhere in the same tab widget, it is removed
+    and reinserted at satellite_index + 1. This preserves the user's requested
+    placement even if another plugin inserted Remote Sensing after Satellite.
+    """
+    try:
+        if tw is None:
+            return False
+        try:
+            sat_idx = _tab_index_by_label(tw, "Satellite Detection")
+        except Exception:
+            return False
+        if sat_idx < 0:
+            return False
+
+        # Only target tab widgets that really contain a top-level Satellite page.
+        # Inner model tabs do not contain this label, so this is safe enough and
+        # avoids rejecting customized Mustatil builds where the Detection label is renamed.
+        existing_indices = []
+        for i in range(tw.count()):
+            try:
+                if _norm_label(tw.tabText(i)) == _norm_label(_VIDEO_TAB_LABEL):
+                    existing_indices.append(i)
+                else:
+                    w = tw.widget(i)
+                    if str(getattr(w, "objectName", lambda: "")() or "") == _VIDEO_TAB_OBJECT:
+                        existing_indices.append(i)
+            except Exception:
+                pass
+
+        # If the correct tab is already exactly right of Satellite, keep it.
+        if existing_indices == [sat_idx + 1]:
+            return True
+
+        # Remove stale/old copies, adjusting the satellite index if needed.
+        for i in sorted(set(existing_indices), reverse=True):
+            try:
+                old = tw.widget(i)
+                tw.removeTab(i)
+                if i < sat_idx:
+                    sat_idx -= 1
+                try:
+                    old.deleteLater()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        ws = _workspace_from_widget(tw)
+        try:
+            page = _build_video_page(ws)
+        except Exception as build_exc:
+            msg = "Full Video Detection page build failed:\n" + traceback.format_exc()
+            _log(msg)
+            page = _make_error_page(msg)
+
+        insert_at = min(max(0, sat_idx + 1), tw.count())
+        _safe_insert_tab(tw, insert_at, page, _VIDEO_TAB_LABEL)
+        try:
+            tw.setTabToolTip(insert_at, "Mustatil Video Detection v11: Label-Studio-style video detection; spacious LAE-DINO panel and frame exporter list")
+        except Exception:
+            pass
+        _INSTALLED_TABWIDGETS.add(id(tw))
+        _emit_workspace(ws, f"Video Detection tab inserted directly right of Satellite Detection ({reason}).")
+        return True
+    except Exception as exc:
+        _log("install tab failed: " + str(exc))
+        try:
+            traceback.print_exc()
+        except Exception:
+            pass
+        return False
+
+def _scan_for_main_tabs(root: Any = None) -> int:
+    try:
+        q = _qt()
+        QApplication = q["QApplication"]
+        QTabWidget = q["QTabWidget"]
+    except Exception as exc:
+        _log("Qt scan unavailable: " + str(exc))
+        return 0
+
+    widgets: List[Any] = []
+    try:
+        if root is not None:
+            if isinstance(root, QTabWidget):
+                widgets.append(root)
+            widgets.extend(root.findChildren(QTabWidget))
+    except Exception:
+        pass
+    try:
+        app = QApplication.instance()
+        if app is not None:
+            for w in list(app.topLevelWidgets()) + list(app.allWidgets()):
+                try:
+                    if isinstance(w, QTabWidget):
+                        widgets.append(w)
+                    widgets.extend(w.findChildren(QTabWidget))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    count = 0
+    seen = set()
+    for tw in widgets:
+        if id(tw) in seen:
+            continue
+        seen.add(id(tw))
+        try:
+            labels = [str(tw.tabText(i) or "").strip() for i in range(tw.count())]
+            if any(_norm_label(x) == "satellite detection" for x in labels):
+                if _install_video_tab_for_tabwidget(tw, "scan"):
+                    count += 1
+        except Exception:
+            pass
+    return count
+
+
+def _schedule_scans(reason: str = "") -> None:
+    try:
+        q = _qt(); QTimer = q["QTimer"]
+        for ms in (0, 50, 150, 400, 900, 1800, 3500, 7000):
+            try:
+                QTimer.singleShot(ms, lambda r=reason: _scan_for_main_tabs())
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _ensure_persistent_scan_timer() -> None:
+    global _RESCAN_TIMER
+    if _RESCAN_TIMER is not None:
+        return
+    try:
+        q = _qt(); QApplication = q["QApplication"]; QTimer = q["QTimer"]
+        app = QApplication.instance()
+        if app is None:
+            return
+        timer = QTimer()
+        timer.setInterval(1250)
+        timer.timeout.connect(lambda: _scan_for_main_tabs())
+        timer.start()
+        _RESCAN_TIMER = timer
+        _log("persistent scan timer started")
+    except Exception as exc:
+        _log("persistent timer failed: " + str(exc))
+
+
+def _class_patch_worker() -> None:
+    """Patch MustatilQtWorkspace methods when the class appears.
+
+    Plugins are loaded near the top of mustatil_qt_workspace.py, before the
+    class is defined. This background watcher patches the class shortly after
+    definition, so even if QTabWidget hooks are overwritten by another plugin,
+    the Satellite build method still performs the insertion.
+    """
+    global _CLASS_PATCHED
+    if _CLASS_PATCHED:
+        return
+    try:
+        import threading, time as _time
+        def worker():
+            global _CLASS_PATCHED
+            for _ in range(500):  # about 25 seconds
+                if _CLASS_PATCHED:
+                    return
+                try:
+                    g = globals().get("MUSTATIL_GLOBALS", {}) or {}
+                    cls = g.get("MustatilQtWorkspace")
+                    if cls is not None and hasattr(cls, "_build_satellite_detection_tab"):
+                        orig_sat = getattr(cls, "_build_satellite_detection_tab")
+                        if not getattr(orig_sat, "_mustatil_video_v5_wrapped", False):
+                            def wrapped_sat(self, *args, **kwargs):
+                                res = orig_sat(self, *args, **kwargs)
+                                try:
+                                    _install_video_tab_for_tabwidget(getattr(self, "tabs", None), "patched _build_satellite_detection_tab")
+                                    _schedule_scans("patched satellite method")
+                                except Exception:
+                                    pass
+                                return res
+                            wrapped_sat._mustatil_video_v5_wrapped = True
+                            setattr(cls, "_build_satellite_detection_tab", wrapped_sat)
+                        orig_ui = getattr(cls, "_build_ui", None)
+                        if orig_ui is not None and not getattr(orig_ui, "_mustatil_video_v5_wrapped", False):
+                            def wrapped_ui(self, *args, **kwargs):
+                                res = orig_ui(self, *args, **kwargs)
+                                try:
+                                    _install_video_tab_for_tabwidget(getattr(self, "tabs", None), "patched _build_ui")
+                                    _schedule_scans("patched build_ui")
+                                except Exception:
+                                    pass
+                                return res
+                            wrapped_ui._mustatil_video_v5_wrapped = True
+                            setattr(cls, "_build_ui", wrapped_ui)
+                        _CLASS_PATCHED = True
+                        _log("MustatilQtWorkspace class patched for Satellite-right insertion")
+                        return
+                except Exception:
+                    pass
+                _time.sleep(0.05)
+        t = threading.Thread(target=worker, name="MustatilVideoV4ClassPatch", daemon=True)
+        t.start()
+    except Exception as exc:
+        _log("class patch worker failed: " + str(exc))
+
+def install_video_detection_tab_hook() -> bool:
+    global _PATCHED, _CURRENT_ADD, _CURRENT_INSERT
+    try:
+        q = _qt()
+        QTabWidget = q["QTabWidget"]
+    except Exception as exc:
+        _log("Qt unavailable: " + str(exc))
+        _class_patch_worker()
+        return False
+
+    if not _PATCHED:
+        _CURRENT_ADD = QTabWidget.addTab
+        _CURRENT_INSERT = QTabWidget.insertTab
+
+        def addTab_patched(self: Any, page: Any, *args: Any, **kwargs: Any) -> Any:
+            res = _CURRENT_ADD(self, page, *args, **kwargs)
+            label = _label_from_add_args(self, res, args)
+            try:
+                if _norm_label(label) == "satellite detection" or _tab_index_by_label(self, "Satellite Detection") >= 0:
+                    _install_video_tab_for_tabwidget(self, "addTab hook")
+                    _schedule_scans("addTab")
+                    _ensure_persistent_scan_timer()
+            except Exception:
+                pass
+            return res
+
+        def insertTab_patched(self: Any, index: int, page: Any, *args: Any, **kwargs: Any) -> Any:
+            res = _CURRENT_INSERT(self, index, page, *args, **kwargs)
+            label = _label_from_add_args(self, res, args)
+            try:
+                if _norm_label(label) == "satellite detection" or _tab_index_by_label(self, "Satellite Detection") >= 0:
+                    _install_video_tab_for_tabwidget(self, "insertTab hook")
+                    _schedule_scans("insertTab")
+                    _ensure_persistent_scan_timer()
+            except Exception:
+                pass
+            return res
+
+        try:
+            addTab_patched._mustatil_video_detection_hook_v4 = True  # type: ignore[attr-defined]
+            insertTab_patched._mustatil_video_detection_hook_v4 = True  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        QTabWidget.addTab = addTab_patched
+        QTabWidget.insertTab = insertTab_patched
+        _PATCHED = True
+        _log("QTabWidget hook installed; target = right of Satellite Detection")
+
+    _class_patch_worker()
+    _schedule_scans("install")
+    _ensure_persistent_scan_timer()
+    try:
+        _scan_for_main_tabs()
+    except Exception:
+        pass
+    return True
+
+def mustatil_plugin_init() -> bool:
+    ok = install_video_detection_tab_hook()
+    try:
+        _class_patch_worker()
+        _scan_for_main_tabs()
+        _schedule_scans("mustatil_plugin_init")
+    except Exception:
+        pass
+    return ok
+
+
+def register_plugin(app: Any = None, main_window: Any = None) -> bool:
+    ok = install_video_detection_tab_hook()
+    try:
+        _scan_for_main_tabs(main_window or app)
+    except Exception:
+        pass
+    return ok
+
+
+def init_plugin(app: Any = None, main_window: Any = None) -> bool:
+    return register_plugin(app, main_window)
+
+
+def load_plugin(app: Any = None, main_window: Any = None) -> bool:
+    return register_plugin(app, main_window)
+
+
+# Also install immediately in case a custom loader imports the plugin without calling init.
+try:
+    install_video_detection_tab_hook()
+except Exception as _exc:
+    try:
+        _log("early install failed: " + str(_exc))
+        _class_patch_worker()
+    except Exception:
+        pass

@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a research or workflow improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Research or workflow problem
+      description: Explain the concrete task that is difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Existing alternatives considered
+      description: Mention relevant GIS, annotation, or machine-learning tools.

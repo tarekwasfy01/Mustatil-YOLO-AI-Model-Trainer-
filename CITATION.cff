@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use Mustatil in research, please cite this software."
+title: "Mustatil: An Open-Source AI and GIS Framework for Archaeological Feature Detection in Satellite Imagery"
+type: software
+authors:
+  - family-names: Wasfy
+    given-names: Tarek
+repository-code: "https://github.com/tarekwasfy01/Mustatil-YOLO-AI-Model-Trainer-"
+url: "https://mustatil.de/"
+version: "5.6.0"
+date-released: "2026-06-22"
+doi: "10.5281/zenodo.20800096"
+license: LGPL-3.0-only
+keywords:
+  - geospatial artificial intelligence
+  - archaeological remote sensing
+  - object detection
+  - GeoTIFF
+  - GIS

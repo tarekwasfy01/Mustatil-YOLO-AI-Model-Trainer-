@@ -1,0 +1,47 @@
+name: Bug report
+description: Report reproducible incorrect behaviour
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not publish sensitive archaeological coordinates or private imagery."
+  - type: input
+    id: version
+    attributes:
+      label: Mustatil version
+      placeholder: 5.6.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options: [PyPI, Conda, Microsoft Store, Windows installer, Linux package, macOS package, Source checkout, Other]
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, CPU/GPU, and relevant driver versions
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour and logs
+    validations:
+      required: true

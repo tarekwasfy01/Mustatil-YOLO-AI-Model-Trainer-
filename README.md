@@ -131,6 +131,8 @@ mustatil
 
 ### Conda
 
+<a href="https://anaconda.org/mustatil/mustatil"> <img src="https://anaconda.org/mustatil/mustatil/badges/version.svg" /> </a>
+
 ```bash
 conda install mustatil::mustatil
 ```
